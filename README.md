@@ -13,13 +13,51 @@ Python实现的Chiphell论坛二手交易区监控工具，支持关键词匹配
 
 ## 安装方法
 
-### 1. 克隆仓库
+### 方法一：Docker（推荐）
+
+最简单的方式是使用Docker运行此应用：
+
+```bash
+# 1. 克隆仓库
+git clone https://github.com/langchou/informer-py.git
+cd informer-py
+
+# 2. 配置
+cp data/config_example.yaml data/config.yaml
+# 编辑配置文件
+nano data/config.yaml
+
+# 3. 启动服务
+docker-compose up -d
+```
+
+#### Docker相关命令
+
+```bash
+# 查看日志
+docker logs -f informer
+
+# 停止服务
+docker-compose down
+
+# 更新镜像
+docker-compose pull
+docker-compose up -d
+
+# 重启服务
+docker-compose restart
+```
+
+### 方法二：本地安装
+
+#### 1. 克隆仓库
 
 ```bash
 git clone https://github.com/langchou/informer-py.git
+cd informer-py
 ```
 
-### 2. 安装依赖
+#### 2. 安装依赖
 
 ```bash
 pip install -r requirements.txt
@@ -74,12 +112,9 @@ user_key_words:
 wait_time_range:
   min: 30  # 最小等待时间（秒）
   max: 60  # 最大等待时间（秒）
-
 ```
 
-## 运行方法
-
-直接运行：
+## 本地运行方法
 
 ```bash
 python -m informer.main
@@ -90,7 +125,7 @@ python -m informer.main
 ### 项目结构
 
 ```
-pyversion/
+informer-py/
 ├── informer/          # 主程序包
 │   ├── __init__.py    # 包初始化文件
 │   ├── config.py      # 配置管理
@@ -103,7 +138,8 @@ pyversion/
 ├── tests/             # 测试目录
 ├── README.md          # 说明文档
 ├── requirements.txt   # 依赖列表
-└── setup.py           # 安装脚本
+├── setup.py           # 安装脚本
+└── docker-compose.yml # Docker Compose配置
 ```
 
 ## 注意事项
