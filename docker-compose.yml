@@ -1,0 +1,14 @@
+services:
+  informer:
+    image: jontyding/informer-py:latest
+    container_name: informer
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - TZ=Asia/Shanghai
+    restart: unless-stopped
+
+networks:
+  default:
+    name: informer-network 

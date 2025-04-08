@@ -1,0 +1,35 @@
+# 日志配置
+log_config:
+  file: "logs/app.log"    # 日志文件路径
+  max_size: 10             # 每个日志文件的最大大小（MB）
+  max_backups: 5           # 保留的旧日志文件数量
+  max_age: 30              # 保留日志文件的最大天数
+  compress: true          # 是否压缩旧日志
+  level: "INFO"           # 日志级别：DEBUG, INFO, WARNING, ERROR
+
+# 钉钉机器人配置
+dingtalk:
+  token: "your_dingtalk_token"  # 钉钉机器人的访问令牌
+  secret: "your_dingtalk_secret"  # 钉钉机器人的签名密钥
+
+# 代理池API
+proxy_pool_api: "http://your-proxy-pool-api/get"  # 代理池API地址，留空表示不使用代理
+
+# Cookies设置
+cookies: "your_cookies_string"  # Cookies字符串，用于网站访问认证
+
+# 用户关键词配置
+user_key_words:
+  "13812345678":  # 手机号码
+    - "RTX 4090"
+    - "3090"
+    - "显卡"
+  "13987654321":
+    - "MacBook"
+    - "iPad"
+    - "iPhone"
+
+# 等待时间范围（秒）
+wait_time_range:
+  min: 60  # 最小等待时间（秒）
+  max: 120  # 最大等待时间（秒）
