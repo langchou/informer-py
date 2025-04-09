@@ -34,7 +34,6 @@ class WaitTimeRange:
 class LLMConfig:
     api_key: str
     base_url: str
-    provider: str  # "openai" 或 "deepseek"
     model: str  # 使用的模型名称
 
 
@@ -90,7 +89,6 @@ def load_config(config_path="data/config.yaml") -> Config:
         llm_config = LLMConfig(
             api_key=data['llm']['api_key'],
             base_url=data['llm']['base_url'],
-            provider=data['llm']['provider'],
             model=data['llm']['model']
         )
 

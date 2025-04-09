@@ -263,4 +263,50 @@ class Fetcher:
             parts = url.split('-')
             if len(parts) > 1:
                 return parts[1]
-        return "" 
+        return ""
+
+    @staticmethod
+    def extract_post_content(html):
+        """
+        提取帖子主楼的纯文本内容，并过滤掉无用字符
+        
+        Args:
+            html: 帖子页面的HTML内容
+            
+        Returns:
+            str: 处理后的纯文本内容
+        """
+        soup = BeautifulSoup(html, 'html.parser')
+        
+        # 查找主楼内容元素 - 修改选择器
+        content_elem = soup.select_one('td.t_f')
+        if not content_elem:
+            # 尝试备用选择器，兼容可能的变动
+            content_elem = soup.select_one('div.pcb td.t_f') 
+            if not content_elem:
+                 logger.warning("无法找到帖子主楼内容元素 (尝试了 td.t_f 和 div.pcb td.t_f)")
+                 return "无法提取帖子内容"
+
+        # 移除所有隐藏的span元素
+        for span in content_elem.select('span[style*="display:none"]'):
+            span.decompose()
+        
+        # 移除所有无用的jammer字体
+        for jammer in content_elem.select('font.jammer'):
+            jammer.decompose()
+        
+        # 获取文本，保留换行
+        content_lines = []
+        for element in content_elem.descendants:
+            if isinstance(element, str) and element.strip():
+                content_lines.append(element.strip())
+            elif element.name == 'br':
+                content_lines.append('\\n')
+        
+        # 合并文本行，处理多余的换行和空格
+        content = ' '.join(content_lines).strip()
+        while '\\n \\n' in content or '  ' in content:
+            content = content.replace('\\n \\n', '\\n')
+            content = content.replace('  ', ' ')
+        
+        return content.strip() 
