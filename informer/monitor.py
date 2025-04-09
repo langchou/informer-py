@@ -9,22 +9,22 @@ import time
 from loguru import logger
 
 from informer.fetcher import Fetcher
+from informer.llm_analyzer import LLMAnalyzer
+from informer.price_analyzer import PriceAnalyzer
 
 
 class NotificationMessage:
     """通知消息类"""
     
-    def __init__(self, title, message, at_phones=None):
+    def __init__(self, post_data, at_phones=None):
         """
         初始化通知消息
         
         Args:
-            title: 消息标题
-            message: 消息内容
+            post_data: 包含帖子所有信息的字典
             at_phones: 需要@的手机号列表
         """
-        self.title = title
-        self.message = message
+        self.post_data = post_data
         self.at_phones = at_phones or []
 
 
@@ -32,7 +32,7 @@ class ChiphellMonitor:
     """Chiphell论坛监控器"""
     
     def __init__(self, cookies, user_keywords, notifier, database, 
-                 wait_time_range, proxy_manager=None):
+                 wait_time_range, proxy_manager=None, llm_config=None):
         """
         初始化监控器
         
@@ -43,6 +43,7 @@ class ChiphellMonitor:
             database: 数据库对象
             wait_time_range: 等待时间范围，格式为 {min: 最小值, max: 最大值}
             proxy_manager: 代理管理器对象
+            llm_config: LLM配置对象，用于内容分析
         """
         self.forum_name = "chiphell"
         self.cookies = cookies
@@ -53,6 +54,17 @@ class ChiphellMonitor:
         self.proxy_manager = proxy_manager
         self.message_queue = queue.Queue(maxsize=100)
         self.fetcher = Fetcher(proxy_manager, cookies)
+        
+        # 初始化LLM分析器
+        self.llm_analyzer = LLMAnalyzer(llm_config) if llm_config else None
+        if self.llm_analyzer and self.llm_analyzer.enabled:
+            logger.info("LLM内容分析功能已启用")
+        else:
+            logger.info("LLM内容分析功能未启用")
+            
+        # 初始化价格分析器
+        self.price_analyzer = PriceAnalyzer(headless=True)
+        logger.info("闲鱼价格分析器已初始化")
         
         # 启动消息处理线程
         self._start_message_processor()
@@ -101,7 +113,7 @@ class ChiphellMonitor:
         批量处理消息
         
         Args:
-            messages: 消息列表
+            messages: 消息列表 (NotificationMessage 对象)
         """
         if not messages:
             return
@@ -111,48 +123,66 @@ class ChiphellMonitor:
         all_phones = set()
         
         for i, msg in enumerate(messages):
+            post_data = msg.post_data
+            details = post_data.get('details', {})
+            analysis_result = post_data.get('analysis_result')
+            price_stats_list = post_data.get('price_stats_list')
+            
             # 添加分隔线（除了第一条消息）
             if i > 0:
                 combined_message.append("----------------------------------------")
             
-            # 解析消息内容，提取关键信息
-            lines = msg.message.split('\n')
-            title = ""
-            post_type = "未知"
-            link = ""
+            # 提取基本信息
+            title = post_data.get('title', '无标题')
+            link = post_data.get('link', '无链接')
+            post_type = details.get('post_type', '未知') # 从details获取
             
-            # 提取标题和帖子类型
-            for line in lines:
-                if line.startswith("标题:"):
-                    title = line.split(":", 1)[1].strip()
-                elif line.startswith("帖子类型:"):
-                    post_type = line.split(":", 1)[1].strip()
-                elif line.startswith("链接:"):
-                    link = line.split(":", 1)[1].strip()
-            
-            # 构建格式化消息（去除多余换行）
+            # 构建格式化消息
             combined_message.append(f"【{post_type}】{title}")
             combined_message.append(f"【链接】{link}")
             
-            # 添加其他详细信息
-            for line in lines:
-                if line.startswith(("标题:", "链接:", "系统信息:", "当前时间:", "可用代理数:", "优选代理数:", "帖子类型:")):
-                    continue
-                
-                if ":" in line:
-                    key, value = line.split(":", 1)
-                    key = key.strip()
-                    value = value.strip()
+            # 添加帖子详情
+            qq = details.get('qq', '-')
+            phone = details.get('phone', '-')
+            price_field = details.get('price', '-') # 帖子字段的价格
+            address = details.get('address', '-')
+            trade_range = details.get('trade_range', '-')
+            
+            if qq != '-': combined_message.append(f"【QQ】{qq}")
+            if phone != '-': combined_message.append(f"【电话】{phone}")
+            if price_field != '-': combined_message.append(f"【价格】{price_field}")
+            if address != '-': combined_message.append(f"【所在地】{address}")
+            if trade_range != '-': combined_message.append(f"【交易范围】{trade_range}")
+            
+            # 添加商品分析和闲鱼比价信息
+            if price_stats_list: # 检查是否有比价结果
+                combined_message.append("\n【商品分析】")
+                for item_data in price_stats_list:
+                    item_name = item_data.get('item_name', 'N/A')
+                    current_price = item_data.get('current_price', '未指定')
+                    stats = item_data.get('stats')
                     
-                    if value and value != "-":
-                        if "价格" in key:
-                            combined_message.append(f"【价格】{value}")
-                        elif "电话" in key or "QQ" in key:
-                            combined_message.append(f"【{key}】{value}")
-                        elif "所在地" in key:
-                            combined_message.append(f"【所在地】{value}")
-                        elif "交易范围" in key:
-                            combined_message.append(f"【交易范围】{value}")
+                    combined_message.append(f"\n▎{item_name}")
+                    combined_message.append(f"▎当前价格: {current_price}")
+                    
+                    if stats and "error" not in stats:
+                        avg = stats.get('average', 0)
+                        med = stats.get('median', 0)
+                        combined_message.append(f"▎  闲鱼均价: ¥{avg:.2f}")
+                        combined_message.append(f"▎  闲鱼中位价: ¥{med:.2f}")
+                    elif stats:
+                        combined_message.append(f"▎  闲鱼比价: 获取失败 ({stats.get('error', '未知错误')})")
+                    else:
+                        combined_message.append("▎  闲鱼比价: 获取失败")
+            elif analysis_result and 'items' in analysis_result and analysis_result['items']:
+                 # 只有LLM分析结果，没有比价结果（可能比价失败或未执行）
+                 combined_message.append("\n【商品分析】")
+                 for item in analysis_result['items']:
+                    item_name = item.get('item_name', 'N/A')
+                    current_price = item.get('price', '未指定')
+                    combined_message.append(f"\n▎{item_name}")
+                    combined_message.append(f"▎当前价格: {current_price}")
+                    combined_message.append("▎  闲鱼比价: 未执行或失败")
             
             # 收集需要@的手机号
             for phone in msg.at_phones:
@@ -161,7 +191,7 @@ class ChiphellMonitor:
         # 发送合并后的消息，使用单个换行符连接
         content = "\n".join(combined_message)
         content_preview = content[:100] + "..." if len(content) > 100 else content
-        logger.debug(f"消息内容预览: {content_preview}")
+        logger.debug(f"发送合并消息，内容预览: {content_preview}")
         
         # 发送通知
         success = self.notifier.send_text_notification(
@@ -175,31 +205,33 @@ class ChiphellMonitor:
         else:
             logger.error("发送钉钉通知失败")
     
-    def _enqueue_notification(self, title, message, at_phones=None):
+    def _enqueue_notification(self, post_data, at_phones=None):
         """
         将通知消息放入队列
         
         Args:
-            title: 消息标题
-            message: 消息内容
+            post_data: 包含帖子所有信息的字典
             at_phones: 需要@的手机号列表
         """
         try:
-            notification = NotificationMessage(title, message, at_phones)
+            notification = NotificationMessage(post_data, at_phones)
             self.message_queue.put(notification, block=False)
         except queue.Full:
             logger.warning("消息队列已满，消息被丢弃")
     
-    def _process_notification(self, title, message):
+    def _process_notification(self, post, details, analysis_result=None, price_stats_list=None):
         """
-        处理通知
+        处理通知，将结构化数据放入队列
         
         Args:
-            title: 帖子标题
-            message: 消息内容
+            post: 帖子基本信息字典
+            details: 帖子详细信息字典
+            analysis_result: LLM分析结果字典
+            price_stats_list: 闲鱼比价结果列表
         """
         # 收集所有关注该帖子的手机号
         phones = []
+        title = post['title'] # 获取标题用于匹配
         
         # 遍历用户关键词进行匹配
         for phone, keywords in self.user_keywords.items():
@@ -216,9 +248,18 @@ class ChiphellMonitor:
             logger.debug(f"帖子 '{title}' 匹配到 {len(phones)} 个手机号需要@")
         else:
             logger.debug(f"帖子 '{title}' 没有匹配到任何关键词")
+            
+        # 准备要放入队列的数据字典
+        post_data = {
+            "title": title,
+            "link": post.get('link', ''),
+            "details": details, # 包含 qq, phone, price, address, trade_range, post_type, post_content
+            "analysis_result": analysis_result, # LLM结果
+            "price_stats_list": price_stats_list # 比价结果列表
+        }
         
-        # 发送通知
-        self._enqueue_notification(title, message, phones)
+        # 发送通知 (将字典放入队列)
+        self._enqueue_notification(post_data, phones)
     
     def _fetch_page_content(self):
         """
@@ -253,6 +294,11 @@ class ChiphellMonitor:
         try:
             content = self.fetcher.fetch_with_proxies(post_url)
             details = self.fetcher.parse_post_content(content)
+            
+            # 提取帖子正文内容
+            post_content = self.fetcher.extract_post_content(content)
+            details['post_content'] = post_content
+            
             return details
         except Exception as e:
             raise Exception(f"获取帖子内容失败: {e}")
@@ -282,7 +328,13 @@ class ChiphellMonitor:
                 
                 # 尝试获取帖子详情
                 try:
+                    # 获取帖子详情和正文内容
                     details = self._fetch_post_content(post['link'])
+                    post_content = details.get('post_content', '-')
+                    
+                    # 记录主楼内容到日志
+                    if post_content != '-':
+                        logger.info(f"帖子正文内容:\n{post_content}")
                     
                     # 构建详细消息
                     detail_message = (
@@ -296,11 +348,71 @@ class ChiphellMonitor:
                         f"帖子类型: {details['post_type']}"
                     )
                     
-                    self._process_notification(post['title'], detail_message)
+                    # 使用LLM分析器提取商品信息（如果启用）
+                    llm_analysis_result = None # 初始化LLM结果
+                    price_stats_list = [] # 初始化比价结果列表
+                    
+                    if self.llm_analyzer and self.llm_analyzer.enabled and post_content != '-':
+                        try:
+                            # 进行LLM分析，设置超时时间为60秒
+                            analysis_start_time = time.time()
+                            logger.debug("开始LLM分析商品信息...")
+                            
+                            llm_analysis_result = self.llm_analyzer.analyze_post(
+                                post['title'],
+                                details['price'],
+                                post_content,
+                                timeout=60  # 设置60秒的超时时间
+                            )
+                            
+                            analysis_elapsed = time.time() - analysis_start_time
+                            logger.debug(f"LLM分析完成，耗时: {analysis_elapsed:.2f}秒")
+                            
+                            # 处理LLM分析结果并进行比价
+                            if 'items' in llm_analysis_result and llm_analysis_result['items']:
+                                browser = None
+                                context = None
+                                try:
+                                    # 初始化浏览器上下文，只执行一次
+                                    browser, context = self.price_analyzer.initialize_context()
+                                    
+                                    for item in llm_analysis_result['items']:
+                                        item_name = item.get('item_name', 'N/A')
+                                        item_price_str = item.get('price', '未指定') # 获取LLM提取的价格
+                                        
+                                        item_price_stats = None # 初始化单个商品的比价结果
+                                        
+                                        # 获取闲鱼比价信息 (在同一个上下文中执行)
+                                        try:
+                                            logger.info(f"正在获取商品 '{item_name}' 的闲鱼比价信息...")
+                                            # 传入 context 对象
+                                            item_price_stats = self.price_analyzer.get_item_price_stats(context, item_name)
+                                        except Exception as e:
+                                            logger.error(f"获取商品 '{item_name}' 的闲鱼比价信息失败: {e}")
+                                        
+                                        # 将LLM提取的价格和比价结果存入列表
+                                        price_stats_list.append({
+                                            "item_name": item_name,
+                                            "current_price": item_price_str,
+                                            "stats": item_price_stats
+                                        })
+                                    logger.info(f"已完成对 {len(llm_analysis_result['items'])} 个商品的闲鱼比价")
+                                finally:
+                                    # 确保浏览器和上下文被关闭
+                                    logger.debug("准备关闭浏览器上下文和实例")
+                                    self.price_analyzer.close_context(browser, context)
+                            else:
+                                logger.warning("LLM分析未返回有效的商品信息")
+                        except Exception as e:
+                            logger.error(f"调用LLM分析或闲鱼比价时出错: {e}")
+                            # 出错时，确保 llm_analysis_result 和 price_stats_list 保持其默认值 (None/空列表)
+                            
+                    # 将所有信息（基础、详情、LLM、比价）传递给通知处理函数
+                    self._process_notification(post, details, llm_analysis_result, price_stats_list)
                 except Exception as e:
-                    logger.error(f"获取帖子详情失败: {e}")
-                    # 即使获取详情失败，也发送基本信息
-                    self._process_notification(post['title'], basic_message)
+                    logger.error(f"获取帖子详情或进行分析比价时失败: {e}")
+                    # 即使获取详情失败，也发送基本信息（details 为 None）
+                    self._process_notification(post, None, None, None)
     
     def monitor(self):
         """开始监控"""

@@ -61,6 +61,12 @@ def main():
         else:
             logger.info("未配置代理API，将不使用代理")
         
+        # 检查是否有LLM配置
+        if config.llm_config:
+            logger.info(f"LLM配置已加载，使用模型: {config.llm_config.model}")
+        else:
+            logger.info("未配置LLM，内容分析功能将被禁用")
+        
         # 创建并启动监控器
         monitor = ChiphellMonitor(
             config.cookies,
@@ -68,7 +74,8 @@ def main():
             notifier,
             database,
             config.wait_time_range,
-            proxy_manager
+            proxy_manager,
+            config.llm_config
         )
         logger.info("监控器初始化完成，开始监控...")
         

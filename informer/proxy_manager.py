@@ -71,12 +71,29 @@ class ProxyManager:
                 logger.error(f"请求代理API失败，状态码: {response.status_code}")
                 return False
             
-            proxy_list = response.text.strip().split('\n')
+            # 尝试解析JSON响应
+            try:
+                # 新API格式返回JSON数据
+                data = response.json()
+                
+                # 检查返回格式是否正确
+                if data.get("code") == 200 and "data" in data and "proxies" in data["data"]:
+                    proxy_list = data["data"]["proxies"]
+                    logger.debug(f"成功从API获取 {len(proxy_list)} 个代理")
+                else:
+                    # 尝试旧格式：如果不是JSON格式或JSON格式不符合预期，则尝试按文本格式处理
+                    logger.warning("API返回格式不符合预期JSON结构，尝试按文本格式处理")
+                    proxy_list = response.text.strip().split('\n')
+            except (ValueError, AttributeError):
+                # JSON解析失败，尝试旧格式
+                logger.warning("无法解析API返回的JSON数据，尝试按文本格式处理")
+                proxy_list = response.text.strip().split('\n')
+            
             cleaned_proxies = []
             
             for proxy in proxy_list:
-                proxy = proxy.strip()
-                if proxy:
+                if isinstance(proxy, str) and proxy.strip():
+                    proxy = proxy.strip()
                     # 确保代理格式正确
                     if not proxy.startswith(('http://', 'https://', 'socks5://')):
                         proxy = f"socks5://{proxy}"

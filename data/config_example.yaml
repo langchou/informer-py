@@ -13,15 +13,15 @@ dingtalk:
   secret: "your_dingtalk_secret"  # 钉钉机器人的签名密钥
 
 # 代理池API
-proxy_pool_api: "http://your-proxy-pool-api/get"  # 代理池API地址，留空表示不使用代理
+proxy_pool_api: ""  # 代理池API地址，留空表示不使用代理
 
 # Cookies设置
 cookies: "your_cookies_string"  # Cookies字符串，用于网站访问认证
 
 # 用户关键词配置
 user_key_words:
-  "13812345678":  # 手机号码
-    - "RTX 4090"
+  "13812345678":  # 手机号码，用于@通知
+    - "RTX 4090"  # 关键词
     - "3090"
     - "显卡"
   "13987654321":
@@ -31,5 +31,11 @@ user_key_words:
 
 # 等待时间范围（秒）
 wait_time_range:
-  min: 60  # 最小等待时间（秒）
-  max: 120  # 最大等待时间（秒）
+  min: 30  # 最小等待时间（秒）
+  max: 60  # 最大等待时间（秒）
+
+# LLM配置（可选）
+llm:
+  api_key: "sk-or-v1-your-openrouter-api-key"  # OpenRouter API密钥
+  base_url: "https://openrouter.ai/api/v1"  # API基础URL
+  model: "openai/gpt-3.5-turbo"  # 使用的模型
