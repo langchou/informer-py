@@ -35,7 +35,7 @@ wait_time_range:
   max: 60  # 最大等待时间（秒）
 
 # LLM配置（可选）
-llm:
-  api_key: "sk-or-v1-your-openrouter-api-key"  # OpenRouter API密钥
-  base_url: "https://openrouter.ai/api/v1"  # API基础URL
-  model: "openai/gpt-3.5-turbo"  # 使用的模型
+# llm:
+#   api_key: "sk-or-v1-your-openrouter-api-key"  # OpenRouter API密钥
+#   base_url: "https://openrouter.ai/api/v1"  # API基础URL
+#   model: "openai/gpt-3.5-turbo"  # 使用的模型

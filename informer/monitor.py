@@ -59,13 +59,13 @@ class ChiphellMonitor:
         self.llm_analyzer = LLMAnalyzer(llm_config) if llm_config else None
         if self.llm_analyzer and self.llm_analyzer.enabled:
             logger.info("LLM内容分析功能已启用")
+            # 只有在LLM启用时才初始化价格分析器
+            self.price_analyzer = PriceAnalyzer(headless=True)
+            logger.info("闲鱼价格分析器已初始化 (依赖LLM)")
         else:
-            logger.info("LLM内容分析功能未启用")
+            logger.info("LLM内容分析功能未启用，闲鱼比价功能将禁用")
+            self.price_analyzer = None # 明确设置为 None
             
-        # 初始化价格分析器
-        self.price_analyzer = PriceAnalyzer(headless=True)
-        logger.info("闲鱼价格分析器已初始化")
-        
         # 启动消息处理线程
         self._start_message_processor()
     
@@ -370,37 +370,50 @@ class ChiphellMonitor:
                             
                             # 处理LLM分析结果并进行比价
                             if 'items' in llm_analysis_result and llm_analysis_result['items']:
-                                browser = None
-                                context = None
-                                try:
-                                    # 初始化浏览器上下文，只执行一次
-                                    browser, context = self.price_analyzer.initialize_context()
-                                    
+                                # 检查价格分析器是否已初始化
+                                if self.price_analyzer:
+                                    browser = None
+                                    context = None
+                                    try:
+                                        # 初始化浏览器上下文，只执行一次
+                                        browser, context = self.price_analyzer.initialize_context()
+                                        
+                                        for item in llm_analysis_result['items']:
+                                            item_name = item.get('item_name', 'N/A')
+                                            item_price_str = item.get('price', '未指定') # 获取LLM提取的价格
+                                            
+                                            item_price_stats = None # 初始化单个商品的比价结果
+                                            
+                                            # 获取闲鱼比价信息 (在同一个上下文中执行)
+                                            try:
+                                                logger.info(f"正在获取商品 '{item_name}' 的闲鱼比价信息...")
+                                                # 传入 context 对象
+                                                item_price_stats = self.price_analyzer.get_item_price_stats(context, item_name)
+                                            except Exception as e:
+                                                logger.error(f"获取商品 '{item_name}' 的闲鱼比价信息失败: {e}")
+                                            
+                                            # 将LLM提取的价格和比价结果存入列表
+                                            price_stats_list.append({
+                                                "item_name": item_name,
+                                                "current_price": item_price_str,
+                                                "stats": item_price_stats
+                                            })
+                                        logger.info(f"已完成对 {len(llm_analysis_result['items'])} 个商品的闲鱼比价")
+                                    finally:
+                                        # 确保浏览器和上下文被关闭
+                                        logger.debug("准备关闭浏览器上下文和实例")
+                                        # 再次检查 price_analyzer 是否存在
+                                        if self.price_analyzer:
+                                            self.price_analyzer.close_context(browser, context)
+                                else:
+                                    logger.info("闲鱼比价功能未开启，跳过比价")
+                                    # 如果比价未开启，只记录LLM提取的信息
                                     for item in llm_analysis_result['items']:
-                                        item_name = item.get('item_name', 'N/A')
-                                        item_price_str = item.get('price', '未指定') # 获取LLM提取的价格
-                                        
-                                        item_price_stats = None # 初始化单个商品的比价结果
-                                        
-                                        # 获取闲鱼比价信息 (在同一个上下文中执行)
-                                        try:
-                                            logger.info(f"正在获取商品 '{item_name}' 的闲鱼比价信息...")
-                                            # 传入 context 对象
-                                            item_price_stats = self.price_analyzer.get_item_price_stats(context, item_name)
-                                        except Exception as e:
-                                            logger.error(f"获取商品 '{item_name}' 的闲鱼比价信息失败: {e}")
-                                        
-                                        # 将LLM提取的价格和比价结果存入列表
                                         price_stats_list.append({
-                                            "item_name": item_name,
-                                            "current_price": item_price_str,
-                                            "stats": item_price_stats
+                                            "item_name": item.get('item_name', 'N/A'),
+                                            "current_price": item.get('price', '未指定'),
+                                            "stats": None # 无比价结果
                                         })
-                                    logger.info(f"已完成对 {len(llm_analysis_result['items'])} 个商品的闲鱼比价")
-                                finally:
-                                    # 确保浏览器和上下文被关闭
-                                    logger.debug("准备关闭浏览器上下文和实例")
-                                    self.price_analyzer.close_context(browser, context)
                             else:
                                 logger.warning("LLM分析未返回有效的商品信息")
                         except Exception as e:
