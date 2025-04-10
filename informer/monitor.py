@@ -10,7 +10,6 @@ from loguru import logger
 
 from informer.fetcher import Fetcher
 from informer.llm_analyzer import LLMAnalyzer
-from informer.price_analyzer import PriceAnalyzer
 
 
 class NotificationMessage:
@@ -59,12 +58,9 @@ class ChiphellMonitor:
         self.llm_analyzer = LLMAnalyzer(llm_config) if llm_config else None
         if self.llm_analyzer and self.llm_analyzer.enabled:
             logger.info("LLM内容分析功能已启用")
-            # 只有在LLM启用时才初始化价格分析器
-            self.price_analyzer = PriceAnalyzer(headless=True)
-            logger.info("闲鱼价格分析器已初始化 (依赖LLM)")
         else:
-            logger.info("LLM内容分析功能未启用，闲鱼比价功能将禁用")
-            self.price_analyzer = None # 明确设置为 None
+            logger.info("LLM内容分析功能未启用")
+            self.llm_analyzer = None # 确保未启用时为 None
             
         # 启动消息处理线程
         self._start_message_processor()
@@ -124,9 +120,8 @@ class ChiphellMonitor:
         
         for i, msg in enumerate(messages):
             post_data = msg.post_data
-            details = post_data.get('details', {})
+            details = post_data.get('details') or {}
             analysis_result = post_data.get('analysis_result')
-            price_stats_list = post_data.get('price_stats_list')
             
             # 添加分隔线（除了第一条消息）
             if i > 0:
@@ -154,35 +149,15 @@ class ChiphellMonitor:
             if address != '-': combined_message.append(f"【所在地】{address}")
             if trade_range != '-': combined_message.append(f"【交易范围】{trade_range}")
             
-            # 添加商品分析和闲鱼比价信息
-            if price_stats_list: # 检查是否有比价结果
+            # 添加商品分析信息 (移除闲鱼比价)
+            if analysis_result and 'items' in analysis_result and analysis_result['items']:
+                # 只有LLM分析结果
                 combined_message.append("\n【商品分析】")
-                for item_data in price_stats_list:
-                    item_name = item_data.get('item_name', 'N/A')
-                    current_price = item_data.get('current_price', '未指定')
-                    stats = item_data.get('stats')
-                    
-                    combined_message.append(f"\n▎{item_name}")
-                    combined_message.append(f"▎当前价格: {current_price}")
-                    
-                    if stats and "error" not in stats:
-                        avg = stats.get('average', 0)
-                        med = stats.get('median', 0)
-                        combined_message.append(f"▎  闲鱼均价: ¥{avg:.2f}")
-                        combined_message.append(f"▎  闲鱼中位价: ¥{med:.2f}")
-                    elif stats:
-                        combined_message.append(f"▎  闲鱼比价: 获取失败 ({stats.get('error', '未知错误')})")
-                    else:
-                        combined_message.append("▎  闲鱼比价: 获取失败")
-            elif analysis_result and 'items' in analysis_result and analysis_result['items']:
-                 # 只有LLM分析结果，没有比价结果（可能比价失败或未执行）
-                 combined_message.append("\n【商品分析】")
-                 for item in analysis_result['items']:
+                for item in analysis_result['items']:
                     item_name = item.get('item_name', 'N/A')
                     current_price = item.get('price', '未指定')
                     combined_message.append(f"\n▎{item_name}")
                     combined_message.append(f"▎当前价格: {current_price}")
-                    combined_message.append("▎  闲鱼比价: 未执行或失败")
             
             # 收集需要@的手机号
             for phone in msg.at_phones:
@@ -219,7 +194,7 @@ class ChiphellMonitor:
         except queue.Full:
             logger.warning("消息队列已满，消息被丢弃")
     
-    def _process_notification(self, post, details, analysis_result=None, price_stats_list=None):
+    def _process_notification(self, post, details, analysis_result=None):
         """
         处理通知，将结构化数据放入队列
         
@@ -227,7 +202,6 @@ class ChiphellMonitor:
             post: 帖子基本信息字典
             details: 帖子详细信息字典
             analysis_result: LLM分析结果字典
-            price_stats_list: 闲鱼比价结果列表
         """
         # 收集所有关注该帖子的手机号
         phones = []
@@ -255,7 +229,6 @@ class ChiphellMonitor:
             "link": post.get('link', ''),
             "details": details, # 包含 qq, phone, price, address, trade_range, post_type, post_content
             "analysis_result": analysis_result, # LLM结果
-            "price_stats_list": price_stats_list # 比价结果列表
         }
         
         # 发送通知 (将字典放入队列)
@@ -349,83 +322,26 @@ class ChiphellMonitor:
                     )
                     
                     # 使用LLM分析器提取商品信息（如果启用）
-                    llm_analysis_result = None # 初始化LLM结果
-                    price_stats_list = [] # 初始化比价结果列表
-                    
+                    analysis_result = None
                     if self.llm_analyzer and self.llm_analyzer.enabled and post_content != '-':
                         try:
-                            # 进行LLM分析，设置超时时间为60秒
-                            analysis_start_time = time.time()
-                            logger.debug("开始LLM分析商品信息...")
-                            
-                            llm_analysis_result = self.llm_analyzer.analyze_post(
-                                post['title'],
-                                details['price'],
-                                post_content,
-                                timeout=60  # 设置60秒的超时时间
+                            logger.debug(f"开始对帖子 '{post['title']}' 进行LLM分析...")
+                            analysis_result = self.llm_analyzer.analyze_post(
+                                post['title'], 
+                                details.get('price', '-'), # 从详情获取价格字段
+                                post_content
                             )
-                            
-                            analysis_elapsed = time.time() - analysis_start_time
-                            logger.debug(f"LLM分析完成，耗时: {analysis_elapsed:.2f}秒")
-                            
-                            # 处理LLM分析结果并进行比价
-                            if 'items' in llm_analysis_result and llm_analysis_result['items']:
-                                # 检查价格分析器是否已初始化
-                                if self.price_analyzer:
-                                    browser = None
-                                    context = None
-                                    try:
-                                        # 初始化浏览器上下文，只执行一次
-                                        browser, context = self.price_analyzer.initialize_context()
-                                        
-                                        for item in llm_analysis_result['items']:
-                                            item_name = item.get('item_name', 'N/A')
-                                            item_price_str = item.get('price', '未指定') # 获取LLM提取的价格
-                                            
-                                            item_price_stats = None # 初始化单个商品的比价结果
-                                            
-                                            # 获取闲鱼比价信息 (在同一个上下文中执行)
-                                            try:
-                                                logger.info(f"正在获取商品 '{item_name}' 的闲鱼比价信息...")
-                                                # 传入 context 对象
-                                                item_price_stats = self.price_analyzer.get_item_price_stats(context, item_name)
-                                            except Exception as e:
-                                                logger.error(f"获取商品 '{item_name}' 的闲鱼比价信息失败: {e}")
-                                            
-                                            # 将LLM提取的价格和比价结果存入列表
-                                            price_stats_list.append({
-                                                "item_name": item_name,
-                                                "current_price": item_price_str,
-                                                "stats": item_price_stats
-                                            })
-                                        logger.info(f"已完成对 {len(llm_analysis_result['items'])} 个商品的闲鱼比价")
-                                    finally:
-                                        # 确保浏览器和上下文被关闭
-                                        logger.debug("准备关闭浏览器上下文和实例")
-                                        # 再次检查 price_analyzer 是否存在
-                                        if self.price_analyzer:
-                                            self.price_analyzer.close_context(browser, context)
-                                else:
-                                    logger.info("闲鱼比价功能未开启，跳过比价")
-                                    # 如果比价未开启，只记录LLM提取的信息
-                                    for item in llm_analysis_result['items']:
-                                        price_stats_list.append({
-                                            "item_name": item.get('item_name', 'N/A'),
-                                            "current_price": item.get('price', '未指定'),
-                                            "stats": None # 无比价结果
-                                        })
-                            else:
-                                logger.warning("LLM分析未返回有效的商品信息")
+                            logger.info(f"LLM分析完成，帖子: '{post['title']}'")
+                            logger.trace(f"LLM分析结果: {analysis_result}")
                         except Exception as e:
-                            logger.error(f"调用LLM分析或闲鱼比价时出错: {e}")
-                            # 出错时，确保 llm_analysis_result 和 price_stats_list 保持其默认值 (None/空列表)
-                            
-                    # 将所有信息（基础、详情、LLM、比价）传递给通知处理函数
-                    self._process_notification(post, details, llm_analysis_result, price_stats_list)
+                            logger.error(f"处理帖子 '{post['title']}' 的LLM分析时出错: {e}")
+                    
+                    # 将所有信息（基础、详情、LLM）传递给通知处理函数
+                    self._process_notification(post, details, analysis_result)
                 except Exception as e:
-                    logger.error(f"获取帖子详情或进行分析比价时失败: {e}")
+                    logger.error(f"获取帖子详情或进行分析时失败: {e}")
                     # 即使获取详情失败，也发送基本信息（details 为 None）
-                    self._process_notification(post, None, None, None)
+                    self._process_notification(post, None, None)
     
     def monitor(self):
         """开始监控"""
