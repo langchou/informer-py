@@ -3,6 +3,8 @@ LLM分析器模块 - 使用大语言模型分析帖子内容
 """
 
 import json
+import time
+import requests
 from openai import OpenAI
 from loguru import logger
 
@@ -28,19 +30,67 @@ class LLMAnalyzer:
         self.api_key = config.api_key
         self.base_url = config.base_url
         self.model = config.model
+        self.provider = getattr(config, 'provider', 'openai')  # 默认为openai
         self.timeout = 30  # 默认API调用超时时间（秒）
         
-        # 初始化OpenAI客户端
+        logger.info(f"使用LLM提供商: {self.provider}")
+        
+        # 初始化客户端
+        if self.provider == 'siliconflow':
+            # SiliconFlow无需初始化客户端，直接使用requests
+            logger.info(f"已初始化SiliconFlow LLM客户端，使用模型: {self.model}")
+        else:
+            # 默认使用OpenAI客户端
+            try:
+                self.client = OpenAI(
+                    base_url=self.base_url,
+                    api_key=self.api_key,
+                    timeout=self.timeout,  # 设置超时时间
+                )
+                logger.info(f"已初始化OpenAI LLM客户端，使用模型: {self.model}")
+            except Exception as e:
+                self.enabled = False
+                logger.error(f"初始化LLM客户端失败: {e}")
+    
+    def call_siliconflow_api(self, messages, timeout):
+        """
+        调用SiliconFlow API
+        
+        Args:
+            messages: 消息列表
+            timeout: 超时时间
+            
+        Returns:
+            dict: 响应内容
+        """
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": self.model,
+            "messages": messages
+        }
+        
         try:
-            self.client = OpenAI(
-                base_url=self.base_url,
-                api_key=self.api_key,
-                timeout=self.timeout,  # 设置超时时间
+            response = requests.post(
+                self.base_url,
+                json=payload,
+                headers=headers,
+                timeout=timeout
             )
-            logger.info(f"已初始化LLM客户端，使用模型: {self.model}")
-        except Exception as e:
-            self.enabled = False
-            logger.error(f"初始化LLM客户端失败: {e}")
+            
+            # 检查响应状态
+            response.raise_for_status()
+            
+            return response.json()
+        except requests.exceptions.Timeout:
+            raise TimeoutError("请求超时")
+        except requests.exceptions.HTTPError as e:
+            raise Exception(f"HTTP错误: {e.response.status_code} {e.response.reason}")
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"请求异常: {str(e)}")
     
     def analyze_post(self, title, price_field, content, timeout=30):
         """
@@ -106,24 +156,38 @@ class LLMAnalyzer:
             logger.debug(f"正在向 {self.model} 模型发送分析请求...")
             
             # 设置超时控制
-            import time
             start_time = time.time()
+            response_content = None
             
-            # 发送聊天请求到LLM，启用JSON模式，并设置超时
             try:
-                # 这里我们使用client的timeout设置而不是每次请求都传递timeout参数
-                # OpenAI客户端在创建时已经设置了timeout
-                completion = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    response_format={"type": "json_object"},  # 启用JSON输出模式
-                )
+                # 根据不同的提供商调用不同的API
+                if self.provider == 'siliconflow':
+                    # 调用SiliconFlow API
+                    response = self.call_siliconflow_api(messages, timeout)
+                    
+                    # 处理SiliconFlow响应
+                    if 'choices' in response and response['choices']:
+                        response_content = response['choices'][0]['message']['content']
+                else:
+                    # 使用OpenAI客户端
+                    completion = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=[
+                            {"role": msg["role"], "content": msg["content"]} 
+                            for msg in messages
+                        ],
+                        response_format={"type": "json_object"},  # 启用JSON输出模式
+                    )
+                    
+                    # 处理OpenAI响应
+                    if completion.choices:
+                        response_content = completion.choices[0].message.content
+                
                 elapsed_time = time.time() - start_time
                 logger.debug(f"LLM分析完成，耗时: {elapsed_time:.2f}秒")
                 
-                # 处理响应
-                if completion.choices:
-                    response_content = completion.choices[0].message.content
+                # 处理响应内容
+                if response_content:
                     logger.debug(f"收到LLM响应: {response_content[:200]}...")
                     
                     # 处理可能存在的Markdown代码块标记

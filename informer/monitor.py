@@ -33,37 +33,71 @@ class ChiphellMonitor:
     def __init__(self, cookies, user_keywords, notifier, database, 
                  wait_time_range, proxy_manager=None, llm_config=None):
         """
-        初始化监控器
+        初始化Chiphell监视器
         
         Args:
-            cookies: Cookies字符串
-            user_keywords: 用户关键词字典，格式为 {手机号: [关键词列表]}
-            notifier: 通知器对象
-            database: 数据库对象
-            wait_time_range: 等待时间范围，格式为 {min: 最小值, max: 最大值}
-            proxy_manager: 代理管理器对象
-            llm_config: LLM配置对象，用于内容分析
+            cookies: Cookies字符串，用于访问网站
+            user_keywords: 用户关键词配置
+            notifier: 通知器实例
+            database: 数据库实例
+            wait_time_range: 等待时间范围
+            proxy_manager: 代理管理器实例
+            llm_config: LLM配置
         """
-        self.forum_name = "chiphell"
-        self.cookies = cookies
-        self.user_keywords = user_keywords
-        self.notifier = notifier
-        self.database = database
-        self.wait_time_range = wait_time_range
-        self.proxy_manager = proxy_manager
-        self.message_queue = queue.Queue(maxsize=100)
+        self.forum_name = "Chiphell-二手交易区"  # 监控的论坛名称
+        self.database = database  # 数据库实例
+        self.notifier = notifier  # 通知器实例
+        self.wait_time_range = wait_time_range  # 等待时间范围
+        
+        # 创建抓取器
         self.fetcher = Fetcher(proxy_manager, cookies)
         
-        # 初始化LLM分析器
-        self.llm_analyzer = LLMAnalyzer(llm_config) if llm_config else None
-        if self.llm_analyzer and self.llm_analyzer.enabled:
-            logger.info("LLM内容分析功能已启用")
-        else:
-            logger.info("LLM内容分析功能未启用")
-            self.llm_analyzer = None # 确保未启用时为 None
-            
-        # 启动消息处理线程
+        # 创建LLM分析器（如果提供了配置）
+        self.llm_analyzer = None
+        if llm_config:
+            self.llm_analyzer = LLMAnalyzer(llm_config)
+            logger.info(f"已初始化LLM分析器: {llm_config.model}")
+        
+        # 消息队列和处理线程
+        self.message_queue = queue.Queue(maxsize=100)
         self._start_message_processor()
+        
+        # 显示机器人配置信息，用于调试
+        self._show_robot_configs()
+    
+    def _show_robot_configs(self):
+        """显示机器人配置信息，用于调试问题"""
+        if not hasattr(self.notifier, 'robot_configs'):
+            logger.warning("通知器没有robot_configs属性，无法显示机器人配置")
+            return
+        
+        logger.info(f"===== 机器人配置信息 =====")
+        logger.info(f"总机器人数量: {len(self.notifier.robot_configs)}")
+        
+        for idx, config in enumerate(self.notifier.robot_configs):
+            logger.info(f"机器人 #{idx+1}: {config.name}")
+            logger.info(f"  - 启用状态: {'已启用' if config.enabled else '未启用'}")
+            logger.info(f"  - 接收所有消息: {'是' if config.receive_all else '否'}")
+            logger.info(f"  - Token长度: {len(config.token) if config.token else 0}")
+            logger.info(f"  - Secret长度: {len(config.secret) if config.secret else 0}")
+            
+            # 检查用户配置
+            if hasattr(config, 'users') and config.users:
+                logger.info(f"  - 用户数量: {len(config.users)}")
+                for user in config.users:
+                    logger.info(f"    * 用户 {user.phone}: 总是@={user.always_at}, 关键词数={len(user.keywords)}")
+                    if user.keywords:
+                        logger.debug(f"      关键词: {', '.join(user.keywords[:5])}" + (f" 等{len(user.keywords)}个" if len(user.keywords) > 5 else ""))
+            elif hasattr(config, 'user_key_words') and config.user_key_words:
+                logger.info(f"  - 用户数量: {len(config.user_key_words)} (旧版配置)")
+                for phone, keywords in config.user_key_words.items():
+                    logger.info(f"    * 用户 {phone}: 关键词数={len(keywords)}")
+                    if keywords:
+                        logger.debug(f"      关键词: {', '.join(keywords[:5])}" + (f" 等{len(keywords)}个" if len(keywords) > 5 else ""))
+            else:
+                logger.warning(f"  - 没有配置任何用户")
+        
+        logger.info(f"===========================")
     
     def _start_message_processor(self):
         """启动消息处理线程"""
@@ -116,7 +150,6 @@ class ChiphellMonitor:
         
         # 合并消息内容
         combined_message = []
-        all_phones = set()
         
         for i, msg in enumerate(messages):
             post_data = msg.post_data
@@ -158,27 +191,27 @@ class ChiphellMonitor:
                     current_price = item.get('price', '未指定')
                     combined_message.append(f"\n▎{item_name}")
                     combined_message.append(f"▎当前价格: {current_price}")
-            
-            # 收集需要@的手机号
-            for phone in msg.at_phones:
-                all_phones.add(phone)
         
         # 发送合并后的消息，使用单个换行符连接
         content = "\n".join(combined_message)
         content_preview = content[:100] + "..." if len(content) > 100 else content
         logger.debug(f"发送合并消息，内容预览: {content_preview}")
         
-        # 发送通知
-        success = self.notifier.send_text_notification(
-            "",  # 移除"新帖子通知"标题
+        # 使用关键词匹配方式发送通知
+        # 从消息中获取第一个帖子的标题，用于关键词匹配
+        post_title = messages[0].post_data.get('title', '')
+        
+        # 使用新的通知方法，根据帖子标题匹配关键词发送
+        success = self.notifier.send_notification_by_keyword_match(
+            "",  # 空标题
             content,
-            list(all_phones)
+            post_title
         )
         
         if success:
-            logger.debug(f"成功发送{len(messages)}条合并消息")
+            logger.debug(f"成功发送{len(messages)}条合并消息到匹配的机器人")
         else:
-            logger.error("发送钉钉通知失败")
+            logger.warning(f"没有机器人匹配到帖子标题 '{post_title}' 或发送失败")
     
     def _enqueue_notification(self, post_data, at_phones=None):
         """
@@ -203,36 +236,19 @@ class ChiphellMonitor:
             details: 帖子详细信息字典
             analysis_result: LLM分析结果字典
         """
-        # 收集所有关注该帖子的手机号
-        phones = []
-        title = post['title'] # 获取标题用于匹配
-        
-        # 遍历用户关键词进行匹配
-        for phone, keywords in self.user_keywords.items():
-            for keyword in keywords:
-                lower_keyword = keyword.lower()
-                lower_title = title.lower()
-                if lower_keyword in lower_title:
-                    logger.debug(f"标题 '{title}' 匹配到关键词 '{keyword}'，将@手机号 {phone}")
-                    phones.append(phone)
-                    break
-        
-        # 记录匹配结果
-        if phones:
-            logger.debug(f"帖子 '{title}' 匹配到 {len(phones)} 个手机号需要@")
-        else:
-            logger.debug(f"帖子 '{title}' 没有匹配到任何关键词")
+        title = post['title']  # 获取标题用于后续关键词匹配
             
         # 准备要放入队列的数据字典
         post_data = {
             "title": title,
             "link": post.get('link', ''),
-            "details": details, # 包含 qq, phone, price, address, trade_range, post_type, post_content
-            "analysis_result": analysis_result, # LLM结果
+            "details": details,  # 包含 qq, phone, price, address, trade_range, post_type, post_content
+            "analysis_result": analysis_result,  # LLM结果
         }
         
-        # 发送通知 (将字典放入队列)
-        self._enqueue_notification(post_data, phones)
+        # 不再在这里执行关键词匹配，发送通知时会进行匹配
+        # 发送空的at_phones列表，实际的@列表将在发送时生成
+        self._enqueue_notification(post_data, [])
     
     def _fetch_page_content(self):
         """

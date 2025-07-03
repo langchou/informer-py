@@ -9,8 +9,38 @@ log_config:
 
 # 钉钉机器人配置
 dingtalk:
-  token: "your_dingtalk_token"  # 钉钉机器人的访问令牌
-  secret: "your_dingtalk_secret"  # 钉钉机器人的签名密钥
+  # 配置多个钉钉机器人
+  robots:
+    - name: "默认机器人"    # 机器人名称（可选）
+      token: "your_dingtalk_token_1"  # 钉钉机器人的访问令牌
+      secret: "your_dingtalk_secret_1"  # 钉钉机器人的签名密钥
+      # enabled: true  # 是否启用，默认为true
+      receive_all: true  # 当没有匹配到关键词时，是否接收所有通知，默认为true
+      # 此机器人关注的用户关键词配置
+      users:
+        "13812345678":  # 手机号码，用于@通知
+          always_at: false  # 是否在每条消息中都@该用户，默认为false
+          keywords:  # 该用户关注的关键词列表
+            - "RTX 4090"
+            - "3090"
+            - "显卡"
+        "13800001111":  # 另一个用户
+          always_at: true  # 每条消息都@此用户
+          keywords:  # 该用户关键词列表
+            - "PS5"
+            - "Xbox"
+    - name: "备用机器人"
+      token: "your_dingtalk_token_2"
+      secret: "your_dingtalk_secret_2"
+      # enabled: true
+      receive_all: false  # 设置为false表示只接收匹配关键词的通知
+      # 此机器人关注的用户关键词配置
+      users:
+        "13987654321":  # 手机号码，用于@通知
+          keywords:  # 该用户关键词列表
+            - "MacBook"
+            - "iPad"
+            - "iPhone"
 
 # 代理池API
 proxy_pool_api: ""  # 代理池API地址，留空表示不使用代理
@@ -18,24 +48,22 @@ proxy_pool_api: ""  # 代理池API地址，留空表示不使用代理
 # Cookies设置
 cookies: "your_cookies_string"  # Cookies字符串，用于网站访问认证
 
-# 用户关键词配置
-user_key_words:
-  "13812345678":  # 手机号码，用于@通知
-    - "RTX 4090"  # 关键词
-    - "3090"
-    - "显卡"
-  "13987654321":
-    - "MacBook"
-    - "iPad"
-    - "iPhone"
-
 # 等待时间范围（秒）
 wait_time_range:
   min: 30  # 最小等待时间（秒）
   max: 60  # 最大等待时间（秒）
 
 # LLM配置（可选）
+# 使用OpenAI API配置示例:
 # llm:
-#   api_key: "sk-or-v1-your-openrouter-api-key"  # OpenRouter API密钥
+#   provider: "openai"  # 使用OpenAI API
+#   api_key: "sk-or-v1-your-openrouter-api-key"  # OpenAI API密钥
 #   base_url: "https://openrouter.ai/api/v1"  # API基础URL
 #   model: "openai/gpt-3.5-turbo"  # 使用的模型
+
+# 使用SiliconFlow API配置示例:
+# llm:
+#   provider: "siliconflow"  # 使用SiliconFlow API
+#   api_key: "your_siliconflow_api_token"  # SiliconFlow API令牌
+#   base_url: "https://api.siliconflow.cn/v1/chat/completions"  # SiliconFlow API端点
+#   model: "Qwen/QwQ-32B"  # 使用的模型
