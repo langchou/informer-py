@@ -5,8 +5,12 @@ services:
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
+    ports:
+      - "5000:5000"  # 映射 Flask 应用端口
     environment:
       - TZ=Asia/Shanghai
+      # 告诉 Flask 应用它在 Docker 环境中运行
+      - DOCKER_ENV=true
     restart: unless-stopped
 
 networks:

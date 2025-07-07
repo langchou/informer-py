@@ -11,6 +11,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# 确保安装了 requests 库（用于 Turnstile 验证）
+RUN pip install --no-cache-dir requests
+
 # 复制应用程序代码
 COPY . .
 

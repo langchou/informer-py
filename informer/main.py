@@ -157,10 +157,29 @@ def get_turnstile_config():
         "enabled": turnstile_config.get("enabled", False)
     }
 
+def get_client_ip():
+    """
+    获取客户端真实 IP 地址，支持反向代理
+    
+    Returns:
+        str: 客户端 IP 地址
+    """
+    if request.headers.get('X-Forwarded-For'):
+        # 如果有 X-Forwarded-For 头，取第一个 IP（最接近用户的 IP）
+        ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    elif request.headers.get('X-Real-IP'):
+        # 某些代理使用 X-Real-IP
+        ip = request.headers.get('X-Real-IP')
+    else:
+        # 直接连接的情况
+        ip = request.remote_addr
+    
+    return ip
+
 if FLASK_AVAILABLE:
     @app.route('/login', methods=['GET', 'POST'])
     def login():
-        ip_address = request.remote_addr
+        ip_address = get_client_ip()
         now = time.time()
 
         if ip_address in login_attempts:
@@ -477,8 +496,17 @@ if FLASK_AVAILABLE:
 def run_web_app():
     """运行Web配置界面"""
     if FLASK_AVAILABLE:
-        logger.info("正在启动Web配置界面，请访问 http://0.0.0.0:5000")
-        app.run(host="0.0.0.0", port=5000, debug=False)
+        host = "0.0.0.0"  # 默认绑定到所有接口
+        port = 5000
+        debug = False
+        
+        # 检查是否在 Docker 环境中运行
+        in_docker = os.environ.get('DOCKER_ENV', '').lower() == 'true'
+        if in_docker:
+            logger.info("检测到 Docker 环境，使用 Docker 特定设置")
+        
+        logger.info(f"正在启动Web配置界面，请访问 http://{host}:{port}")
+        app.run(host=host, port=port, debug=debug)
     else:
         pass
 
