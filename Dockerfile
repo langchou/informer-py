@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+RUN pip install --no-cache-dir Flask==2.0.1 Werkzeug==2.0.1
+
 # 确保安装了 requests 库（用于 Turnstile 验证）
 RUN pip install --no-cache-dir requests
 
@@ -24,4 +26,4 @@ RUN mkdir -p data results
 ENV TZ=Asia/Shanghai
 
 # 设置入口点
-CMD ["python", "-m", "informer.main"] 
+CMD ["/usr/local/bin/python", "-m", "informer.main"]
