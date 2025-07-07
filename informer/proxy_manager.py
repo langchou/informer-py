@@ -12,24 +12,28 @@ from loguru import logger
 class ProxyManager:
     """代理池管理器"""
     
-    def __init__(self, proxy_api=None):
+    def __init__(self, api_url):
         """
         初始化代理池管理器
         
         Args:
-            proxy_api: 代理API地址
+            api_url: 代理API的URL
         """
-        self.proxy_api = proxy_api
+        self.api_url = api_url
         self.proxies = []  # 普通代理池
         self.preferred_proxies = {}  # 优选代理池，值为响应时间
+        self.last_update_time = 0
+        self.update_interval = 180  # 默认3分钟更新一次
+        self.checker_running = False
+        self.pool_updater_running = False
         self.lock = threading.RLock()
+        self.logger = logger.bind(name="ProxyManager")
         
         # 初始化时更新一次代理池
-        if self.proxy_api:
-            self.update_proxy_pool()
-            
-            # 启动定时更新任务
-            self._start_pool_updater()
+        self.update_proxy_pool()
+        
+        # 启动定时更新任务
+        self._start_pool_updater()
     
     def _start_pool_updater(self, interval=180):
         """
@@ -57,7 +61,7 @@ class ProxyManager:
         Returns:
             bool: 是否更新成功
         """
-        if not self.proxy_api:
+        if not self.api_url:
             logger.warning("未设置代理API")
             return False
         
@@ -66,7 +70,7 @@ class ProxyManager:
             session = requests.Session()
             session.verify = False
             
-            response = session.get(self.proxy_api, timeout=10)
+            response = session.get(self.api_url, timeout=10)
             if response.status_code != 200:
                 logger.error(f"请求代理API失败，状态码: {response.status_code}")
                 return False
@@ -248,4 +252,23 @@ class ProxyManager:
             tuple: (普通代理数量, 优选代理数量)
         """
         with self.lock:
-            return len(self.proxies), len(self.preferred_proxies) 
+            return len(self.proxies), len(self.preferred_proxies)
+    
+    def update_api_url(self, new_api_url):
+        """更新代理API URL
+        
+        Args:
+            new_api_url: 新的代理API URL
+        """
+        if new_api_url == self.api_url:
+            self.logger.debug("代理API URL未变化，无需更新")
+            return
+        
+        self.logger.info(f"更新代理API URL: {new_api_url}")
+        with self.lock:
+            self.api_url = new_api_url
+            # 清空现有代理池
+            self.proxies = []
+            self.preferred_proxies = {}
+            # 重新获取代理
+            self.update_proxy_pool() 

@@ -167,46 +167,115 @@ class DingTalkNotifier:
             bool: 是否发送成功
         """
         message = f"❌ 错误报告\n\n**错误类型**: {title}\n\n**错误信息**: {error_message}\n\n**发生时间**: {time.strftime('%Y-%m-%d %H:%M:%S')}"
-        return self.send_markdown_notification(f"{title}", message)
+        return self.send_markdown_notification(f"{title}", message) 
 
 
 class MultiRobotNotifier:
     """多机器人通知管理器"""
     
-    def __init__(self, robot_configs):
-        """
-        初始化多机器人通知管理器
+    def __init__(self, robots_config):
+        """初始化多机器人通知管理器
         
         Args:
-            robot_configs: 机器人配置列表，每项包含 name, token, secret, user_key_words
+            robots_config: 机器人配置列表
         """
-        self.notifiers = []
-        self.robot_configs = []
+        self.robots = []
+        self.logger = logger.bind(name="MultiRobotNotifier")
+        self.logger.debug(f"正在初始化多机器人通知管理器，配置了 {len(robots_config)} 个机器人")
         
-        logger.debug(f"正在初始化多机器人通知管理器，配置了 {len(robot_configs)} 个机器人")
-        
-        # 创建所有启用的通知器实例
-        for config in robot_configs:
-            logger.debug(f"检查机器人配置: {config.name}, enabled={config.enabled}, token长度={len(config.token) if config.token else 0}, secret长度={len(config.secret) if config.secret else 0}")
-            if config.enabled and config.token and config.secret:
-                notifier = DingTalkNotifier(
-                    token=config.token,
-                    secret=config.secret,
-                    name=config.name
-                )
-                self.notifiers.append(notifier)
-                self.robot_configs.append(config)  # 保存机器人配置，用于关键词匹配
-                logger.info(f"初始化钉钉机器人: {config.name}, receive_all={config.receive_all}")
+        for robot_config in robots_config:
+            try:
+                # 检查必要的配置项
+                self.logger.debug(f"检查机器人配置: {robot_config.name}, enabled={robot_config.enabled}, token长度={len(robot_config.token)}, secret长度={len(robot_config.secret)}")
                 
-                # 打印每个机器人配置的用户信息
-                if hasattr(config, 'users') and config.users:
-                    for user in config.users:
-                        logger.debug(f"机器人 [{config.name}] 配置用户: {user.phone}, always_at={user.always_at}, 关键词数量={len(user.keywords)}")
-            else:
-                logger.warning(f"机器人 [{config.name}] 未启用或缺少token/secret，已跳过")
+                # 如果机器人被禁用，则跳过
+                if not robot_config.enabled:
+                    self.logger.info(f"机器人 {robot_config.name} 已禁用，跳过初始化")
+                    continue
+                
+                # 创建钉钉机器人通知器
+                robot = DingTalkNotifier(
+                    robot_config.token,
+                    robot_config.secret,
+                    robot_config.name
+                )
+                
+                # 记录机器人配置
+                self.logger.info(f"初始化钉钉机器人: {robot_config.name}, receive_all={robot_config.receive_all}")
+                
+                # 记录用户配置
+                if hasattr(robot_config, "users") and robot_config.users:
+                    for user in robot_config.users:
+                        self.logger.debug(f"机器人 [{robot_config.name}] 配置用户: {user.phone}, always_at={user.always_at}, 关键词数量={len(user.keywords) if hasattr(user, 'keywords') else 0}")
+                
+                # 将机器人和配置一起保存
+                self.robots.append({
+                    "notifier": robot,
+                    "config": robot_config
+                })
+            except Exception as e:
+                self.logger.error(f"初始化机器人 {robot_config.name} 失败: {e}")
+    
+    def update_robots(self, robots_config):
+        """更新机器人配置
         
-        if not self.notifiers:
-            logger.warning("没有可用的钉钉机器人，通知功能将被禁用")
+        Args:
+            robots_config: 新的机器人配置列表
+        """
+        self.logger.info(f"正在更新机器人配置，新配置包含 {len(robots_config)} 个机器人")
+        
+        # 创建新的机器人列表
+        new_robots = []
+        
+        for robot_config in robots_config:
+            try:
+                # 检查是否已存在相同名称的机器人
+                existing_robot = next((r for r in self.robots if r["config"].name == robot_config.name), None)
+                
+                # 如果机器人被禁用，则跳过
+                if not robot_config.enabled:
+                    self.logger.info(f"机器人 {robot_config.name} 已禁用，跳过更新")
+                    continue
+                
+                if existing_robot:
+                    # 如果token和secret没有变化，复用现有的机器人实例
+                    if (existing_robot["config"].token == robot_config.token and 
+                        existing_robot["config"].secret == robot_config.secret):
+                        self.logger.debug(f"机器人 {robot_config.name} 配置未变化，复用现有实例")
+                        new_robots.append({
+                            "notifier": existing_robot["notifier"],
+                            "config": robot_config  # 更新配置
+                        })
+                    else:
+                        # 如果token或secret变化，创建新的机器人实例
+                        self.logger.info(f"机器人 {robot_config.name} 配置已变化，重新创建实例")
+                        robot = DingTalkNotifier(
+                            robot_config.token,
+                            robot_config.secret,
+                            robot_config.name
+                        )
+                        new_robots.append({
+                            "notifier": robot,
+                            "config": robot_config
+                        })
+                else:
+                    # 创建新的机器人实例
+                    self.logger.info(f"添加新机器人: {robot_config.name}")
+                    robot = DingTalkNotifier(
+                        robot_config.token,
+                        robot_config.secret,
+                        robot_config.name
+                    )
+                    new_robots.append({
+                        "notifier": robot,
+                        "config": robot_config
+                    })
+            except Exception as e:
+                self.logger.error(f"更新机器人 {robot_config.name} 失败: {e}")
+        
+        # 更新机器人列表
+        self.robots = new_robots
+        self.logger.info(f"机器人配置更新完成，当前共有 {len(self.robots)} 个有效机器人")
     
     def match_keyword_to_robot(self, title):
         """
@@ -219,9 +288,12 @@ class MultiRobotNotifier:
             list: 元组列表 [(机器人索引, [匹配到的关键词手机号列表], [总是@的手机号列表]), ...]
         """
         matches = []
-        logger.debug(f"正在匹配标题: '{title}' 到 {len(self.robot_configs)} 个机器人")
+        logger.debug(f"正在匹配标题: '{title}' 到 {len(self.robots)} 个机器人")
         
-        for robot_idx, config in enumerate(self.robot_configs):
+        for robot_idx, robot_info in enumerate(self.robots):
+            robot = robot_info["notifier"]
+            config = robot_info["config"]
+            
             # 收集两类需要@的手机号
             matched_phones = []  # 关键词匹配到的手机号
             always_at_phones = []  # 配置了always_at=True的手机号
@@ -287,11 +359,11 @@ class MultiRobotNotifier:
         Returns:
             bool: 是否至少有一个机器人成功发送
         """
-        if not self.notifiers:
+        if not self.robots:
             logger.warning("没有可用的钉钉机器人，跳过通知发送")
             return False
         
-        logger.debug(f"开始为标题 '{post_title}' 匹配机器人，当前有 {len(self.notifiers)} 个机器人可用")
+        logger.debug(f"开始为标题 '{post_title}' 匹配机器人，当前有 {len(self.robots)} 个机器人可用")
         
         # 匹配标题与机器人关键词，获取匹配的机器人和需要@的手机号
         # 现在match_keyword_to_robot会返回所有匹配关键词的机器人，以及配置了receive_all=True的机器人
@@ -309,10 +381,11 @@ class MultiRobotNotifier:
             # 合并两种需要@的手机号（去重）
             at_phones = list(set(matched_phones + always_at_phones))
             
-            notifier = self.notifiers[robot_idx]
-            config = self.robot_configs[robot_idx]
+            robot_info = self.robots[robot_idx]
+            robot = robot_info["notifier"]
+            config = robot_info["config"]
             logger.debug(f"正在通过机器人 [{config.name}] 发送通知, @手机号: {at_phones}")
-            if notifier.send_text_notification(title, message, at_phones):
+            if robot.send_text_notification(title, message, at_phones):
                 success_count += 1
                 logger.info(f"机器人 [{config.name}] 成功发送通知")
             else:
@@ -337,17 +410,18 @@ class MultiRobotNotifier:
         Returns:
             bool: 是否至少有一个机器人成功发送
         """
-        if not self.notifiers:
+        if not self.robots:
             logger.warning("没有可用的钉钉机器人，跳过通知发送")
             return False
         
         success_count = 0
-        for notifier in self.notifiers:
-            if notifier.send_text_notification(title, message, at_mobiles):
+        for robot_info in self.robots:
+            robot = robot_info["notifier"]
+            if robot.send_text_notification(title, message, at_mobiles):
                 success_count += 1
         
         if success_count > 0:
-            logger.info(f"成功通过 {success_count}/{len(self.notifiers)} 个机器人发送通知")
+            logger.info(f"成功通过 {success_count}/{len(self.robots)} 个机器人发送通知")
             return True
         else:
             logger.error("所有机器人发送通知均失败")
@@ -365,17 +439,18 @@ class MultiRobotNotifier:
         Returns:
             bool: 是否至少有一个机器人成功发送
         """
-        if not self.notifiers:
+        if not self.robots:
             logger.warning("没有可用的钉钉机器人，跳过通知发送")
             return False
         
         success_count = 0
-        for notifier in self.notifiers:
-            if notifier.send_markdown_notification(title, message, at_mobiles):
+        for robot_info in self.robots:
+            robot = robot_info["notifier"]
+            if robot.send_markdown_notification(title, message, at_mobiles):
                 success_count += 1
         
         if success_count > 0:
-            logger.info(f"成功通过 {success_count}/{len(self.notifiers)} 个机器人发送通知")
+            logger.info(f"成功通过 {success_count}/{len(self.robots)} 个机器人发送通知")
             return True
         else:
             logger.error("所有机器人发送通知均失败")
@@ -392,13 +467,14 @@ class MultiRobotNotifier:
         Returns:
             bool: 是否至少有一个机器人成功发送
         """
-        if not self.notifiers:
+        if not self.robots:
             logger.warning("没有可用的钉钉机器人，跳过错误报告")
             return False
         
         success_count = 0
-        for notifier in self.notifiers:
-            if notifier.report_error(title, error_message):
+        for robot_info in self.robots:
+            robot = robot_info["notifier"]
+            if robot.report_error(title, error_message):
                 success_count += 1
                 
         return success_count > 0 

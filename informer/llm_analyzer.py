@@ -32,8 +32,7 @@ class LLMAnalyzer:
         self.model = config.model
         self.provider = getattr(config, 'provider', 'openai')  # 默认为openai
         self.timeout = 30  # 默认API调用超时时间（秒）
-        
-        logger.info(f"使用LLM提供商: {self.provider}")
+        logger.info(f"使用LLM提供者: {self.provider}")
         
         # 初始化客户端
         if self.provider == 'siliconflow':
@@ -121,7 +120,7 @@ class LLMAnalyzer:
             分析提供的帖子标题、价格信息和内容。
             识别出所有正在出售的商品及其对应的价格。
             只返回一个有效的JSON对象，不要包含任何解释性文本。
-            JSON对象应该有一个名为"items"的键，其值是一个对象数组。数组中的每个对象代表一个商品，包含两个键:"item_name"(字符串)和"price"(字符串)。
+            JSON对象应该有一个名为"items"的键，其值是一个对象数组。数组中的每个对象代表一个商品，包含两个键:"item_name"(字符串类型)和"price"(字符串类型)。
             如果没有明确提到某个商品的价格，则将价格设置为"未指定"。
             如果多个价格被提及但仅仅基于提供的文本无法明确哪个价格对应哪个商品，请尽力根据上下文将它们关联起来，或者如果无法关联则分别列出。
             确保输出是一个单一的、有效的JSON对象。
@@ -153,7 +152,7 @@ class LLMAnalyzer:
             ]
             
             # 发送请求到LLM
-            logger.debug(f"正在向 {self.model} 模型发送分析请求...")
+            logger.debug(f"正在向{self.model} 模型发送分析请求...")
             
             # 设置超时控制
             start_time = time.time()
@@ -173,7 +172,7 @@ class LLMAnalyzer:
                     completion = self.client.chat.completions.create(
                         model=self.model,
                         messages=[
-                            {"role": msg["role"], "content": msg["content"]} 
+                            {"role": msg["role"], "content": msg["content"]}
                             for msg in messages
                         ],
                         response_format={"type": "json_object"},  # 启用JSON输出模式
@@ -208,7 +207,7 @@ class LLMAnalyzer:
                         # 访问提取出的项目
                         if "items" in parsed_json and isinstance(parsed_json["items"], list):
                             items = parsed_json["items"]
-                            logger.info(f"LLM成功提取出 {len(items)} 个商品信息")
+                            logger.info(f"LLM成功提取了{len(items)} 个商品信息")
                             for item in items:
                                 item_name = item.get("item_name", "N/A")
                                 price = item.get("price", "N/A")
@@ -234,4 +233,4 @@ class LLMAnalyzer:
                 
         except Exception as e:
             logger.error(f"调用LLM分析时出错: {e}")
-            return {"items": []} 
+            return {"items": []}

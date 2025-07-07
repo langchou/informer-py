@@ -42,6 +42,15 @@ dingtalk:
             - "iPad"
             - "iPhone"
 
+# Web界面密码（留空表示无需密码）
+web_password: ""
+
+# Cloudflare Turnstile 配置
+turnstile:
+  site_key: "YOUR_SITE_KEY"  # 在 Cloudflare 控制面板获取的站点密钥
+  secret_key: "YOUR_SECRET_KEY"  # 在 Cloudflare 控制面板获取的密钥
+  enabled: false  # 是否启用 Turnstile 验证
+
 # 代理池API
 proxy_pool_api: ""  # 代理池API地址，留空表示不使用代理
 

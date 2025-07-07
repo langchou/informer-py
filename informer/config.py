@@ -123,7 +123,7 @@ def load_config(config_path="data/config.yaml") -> Config:
             
             robots.append(DingTalkRobot(
                 name="默认机器人",
-                token=data['dingtalk']['token'],
+        token=data['dingtalk']['token'],
                 secret=data['dingtalk']['secret'],
                 enabled=True,
                 receive_all=True,  # 默认机器人接收所有通知

@@ -57,7 +57,7 @@ class ChiphellMonitor:
         if llm_config:
             self.llm_analyzer = LLMAnalyzer(llm_config)
             logger.info(f"已初始化LLM分析器: {llm_config.model}")
-        
+            
         # 消息队列和处理线程
         self.message_queue = queue.Queue(maxsize=100)
         self._start_message_processor()

@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Informer-py 钉钉机器人配置</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .robot-tab {
+            cursor: pointer;
+            padding: 10px 15px;
+            border-radius: 4px 4px 0 0;
+            border: 1px solid #dee2e6;
+            border-bottom: none;
+            margin-right: 5px;
+            background-color: #f8f9fa;
+        }
+        .robot-tab.active {
+            background-color: #fff;
+            border-bottom: 1px solid #fff;
+            margin-bottom: -1px;
+            font-weight: bold;
+        }
+        .robot-content {
+            border: 1px solid #dee2e6;
+            padding: 20px;
+            border-radius: 0 4px 4px 4px;
+        }
+        .user-card {
+            border: 1px solid #eee;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .keyword-badge {
+            margin-right: 5px;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-4">
+        <div class="row justify-content-center">
+            <div class="col-md-10">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                        <h1 class="h3 mb-0">Informer-py 钉钉机器人配置</h1>
+                        <button id="debugBtn" class="btn btn-sm btn-outline-light">调试模式</button>
+                    </div>
+                    <div class="card-body">
+                        <!-- 消息提示框 -->
+                        <div id="alertBox" class="alert alert-success alert-dismissible fade d-none" role="alert">
+                            <span id="alertMessage"></span>
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+
+                        <!-- 机器人标签 -->
+                        <div class="d-flex mb-0 robot-tabs">
+                            {% if config.dingtalk and config.dingtalk.robots %}
+                                {% for robot in config.dingtalk.robots %}
+                                    <div class="robot-tab {% if loop.first %}active{% endif %}" data-robot-id="{{ loop.index }}">
+                                        {% if robot.enabled %}
+                                            <i class="bi bi-robot text-success"></i>
+                                        {% else %}
+                                            <i class="bi bi-robot text-danger"></i>
+                                        {% endif %}
+                                        {{ robot.name }}
+                                    </div>
+                                {% endfor %}
+                            {% endif %}
+                            <div class="robot-tab add-tab">
+                                <i class="bi bi-plus-circle"></i> 添加
+                            </div>
+                        </div>
+
+                        <!-- 机器人内容 -->
+                        <div class="robot-content">
+                            {% if config.dingtalk and config.dingtalk.robots %}
+                                {% for robot in config.dingtalk.robots %}
+                                    <div class="robot-panel {% if not loop.first %}d-none{% endif %}" data-robot-id="{{ loop.index }}">
+                                        <form class="robot-form mb-4" data-index="{{ loop.index0 }}">
+                                            <div class="row mb-3">
+                                                <div class="col-md-6">
+                                                    <label class="form-label">机器人名称</label>
+                                                    <input type="text" class="form-control" name="name" value="{{ robot.name }}" required>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">状态</label>
+                                                    <div class="form-check form-switch mt-2">
+                                                        <input class="form-check-input" type="checkbox" name="enabled" {% if robot.enabled %}checked{% endif %}>
+                                                        <label class="form-check-label">启用</label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="row mb-3">
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Token</label>
+                                                    <input type="text" class="form-control" name="token" value="{{ robot.token }}" required>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Secret</label>
+                                                    <input type="text" class="form-control" name="secret" value="{{ robot.secret }}" required>
+                                                </div>
+                                            </div>
+                                            <div class="mb-3">
+                                                <div class="form-check form-switch">
+                                                    <input class="form-check-input" type="checkbox" name="receive_all" {% if robot.receive_all %}checked{% endif %}>
+                                                    <label class="form-check-label">接收所有消息</label>
+                                                </div>
+                                            </div>
+                                            <button type="button" class="btn btn-primary save-robot">
+                                                <i class="bi bi-save"></i> 保存设置
+                                            </button>
+                                        </form>
+
+                                        <hr>
+
+                                        <div class="d-flex justify-content-between align-items-center mb-3">
+                                            <h5>用户配置</h5>
+                                            <button type="button" class="btn btn-success btn-sm add-user" data-robot-index="{{ loop.index0 }}">
+                                                <i class="bi bi-person-plus"></i> 添加用户
+                                            </button>
+                                        </div>
+
+                                        <div class="users-container">
+                                            {% if robot.users %}
+                                                {% set robot_index = loop.index0 %}
+                                                {% for phone, user_info in robot.users.items() %}
+                                                    <div class="user-card">
+                                                        <div class="d-flex justify-content-between align-items-center mb-3">
+                                                            <h6 class="mb-0">
+                                                                <i class="bi bi-person"></i> {{ phone }}
+                                                                <span class="badge bg-secondary d-none debug-info">机器人索引: {{ robot_index }}</span>
+                                                            </h6>
+                                                            <button type="button" class="btn btn-danger btn-sm delete-user" 
+                                                                    data-robot-index="{{ robot_index }}" 
+                                                                    data-phone="{{ phone }}">
+                                                                <i class="bi bi-trash"></i>
+                                                            </button>
+                                                        </div>
+                                                        <div class="mb-3">
+                                                            <div class="form-check form-switch mb-2">
+                                                                <input class="form-check-input toggle-always-at" type="checkbox" 
+                                                                       id="alwaysAt_{{ robot_index }}_{{ phone }}" 
+                                                                       data-robot-index="{{ robot_index }}" 
+                                                                       data-phone="{{ phone }}" 
+                                                                       {% if user_info.always_at %}checked{% endif %}>
+                                                                <label class="form-check-label" for="alwaysAt_{{ robot_index }}_{{ phone }}">
+                                                                    总是@该用户
+                                                                </label>
+                                                            </div>
+                                                            <label class="form-label mb-1">关键词</label>
+                                                            <div class="d-flex flex-wrap">
+                                                                {% if user_info.keywords %}
+                                                                    {% for keyword in user_info.keywords %}
+                                                                        <span class="badge bg-primary keyword-badge">
+                                                                            {{ keyword }}
+                                                                            <i class="bi bi-x-circle ms-1 delete-keyword" 
+                                                                               data-keyword="{{ keyword }}"
+                                                                               data-robot-index="{{ robot_index }}"
+                                                                               data-phone="{{ phone }}"
+                                                                               style="cursor: pointer;"></i>
+                                                                        </span>
+                                                                    {% endfor %}
+                                                                {% else %}
+                                                                    <span class="text-muted">无关键词</span>
+                                                                {% endif %}
+                                                            </div>
+                                                            <button type="button" class="btn btn-outline-primary btn-sm mt-2 add-keyword" 
+                                                                    data-robot-index="{{ robot_index }}" 
+                                                                    data-phone="{{ phone }}">
+                                                                <i class="bi bi-plus"></i> 添加关键词
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                {% endfor %}
+                                            {% else %}
+                                                <div class="text-center text-muted py-4">
+                                                    <i class="bi bi-people fs-4 mb-2"></i>
+                                                    <p>暂无用户配置</p>
+                                                </div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            {% else %}
+                                <div class="text-center text-muted py-5">
+                                    <i class="bi bi-robot fs-1 mb-3"></i>
+                                    <p>暂无机器人配置，请点击"添加"按钮创建</p>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模态框：添加机器人 -->
+    <div class="modal fade" id="addRobotModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">添加机器人</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addRobotForm">
+                        <div class="mb-3">
+                            <label class="form-label">机器人名称</label>
+                            <input type="text" class="form-control" name="name" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Token</label>
+                            <input type="text" class="form-control" name="token" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Secret</label>
+                            <input type="text" class="form-control" name="secret" required>
+                        </div>
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" class="form-check-input" name="receive_all" id="receiveAll" checked>
+                            <label class="form-check-label" for="receiveAll">接收所有消息</label>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" id="submitAddRobot">添加</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模态框：添加用户 -->
+    <div class="modal fade" id="addUserModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">添加用户</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addUserForm">
+                        <input type="hidden" name="robot_index" id="robotIndexForUser">
+                        <div class="mb-3">
+                            <label class="form-label">手机号</label>
+                            <input type="text" class="form-control" name="phone" required>
+                        </div>
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" class="form-check-input" name="always_at" id="alwaysAt">
+                            <label class="form-check-label" for="alwaysAt">总是@该用户</label>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" id="submitAddUser">添加</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模态框：添加关键词 -->
+    <div class="modal fade" id="addKeywordModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">添加关键词</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addKeywordForm">
+                        <input type="hidden" name="robot_index" id="robotIndexForKeyword">
+                        <input type="hidden" name="phone" id="phoneForKeyword">
+                        <div class="mb-3">
+                            <label class="form-label">关键词</label>
+                            <input type="text" class="form-control" name="keyword" required>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" id="submitAddKeyword">添加</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            // 显示提示信息
+            function showAlert(message, type = 'success') {
+                $('#alertMessage').text(message);
+                $('#alertBox').removeClass('d-none alert-success alert-danger')
+                    .addClass('show alert-' + type);
+                
+                // 3秒后自动隐藏
+                setTimeout(function() {
+                    $('#alertBox').removeClass('show').addClass('d-none');
+                }, 3000);
+            }
+
+            // 标签切换
+            $('.robot-tab').click(function() {
+                if ($(this).hasClass('add-tab')) {
+                    $('#addRobotModal').modal('show');
+                    return;
+                }
+                
+                const robotId = $(this).data('robot-id');
+                $('.robot-tab').removeClass('active');
+                $(this).addClass('active');
+                
+                $('.robot-panel').addClass('d-none');
+                $(`.robot-panel[data-robot-id="${robotId}"]`).removeClass('d-none');
+            });
+
+            // 调试模式切换
+            $('#debugBtn').click(function() {
+                $('.debug-info').toggleClass('d-none');
+                $(this).toggleClass('btn-outline-light btn-warning');
+                if ($(this).hasClass('btn-warning')) {
+                    $(this).text('关闭调试');
+                    console.log('调试模式已开启');
+                } else {
+                    $(this).text('调试模式');
+                    console.log('调试模式已关闭');
+                }
+            });
+
+            // 添加机器人按钮点击事件
+            $('.add-tab').click(function() {
+                $('#addRobotModal').modal('show');
+            });
+
+            // 提交添加机器人表单
+            $('#submitAddRobot').click(function() {
+                const formData = {
+                    name: $('#addRobotForm input[name="name"]').val(),
+                    token: $('#addRobotForm input[name="token"]').val(),
+                    secret: $('#addRobotForm input[name="secret"]').val(),
+                    receive_all: $('#addRobotForm input[name="receive_all"]').is(':checked')
+                };
+
+                $.ajax({
+                    url: '/add_robot',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify(formData),
+                    success: function(response) {
+                        if (response.status === 'success') {
+                            showAlert(response.message);
+                            $('#addRobotModal').modal('hide');
+                            // 重新加载页面以显示新机器人
+                            location.reload();
+                        } else {
+                            showAlert(response.message, 'danger');
+                        }
+                    },
+                    error: function() {
+                        showAlert('添加失败，请检查网络连接', 'danger');
+                    }
+                });
+            });
+
+            // 添加用户按钮点击事件
+            $('.add-user').click(function() {
+                const robotIndex = $(this).data('robot-index');
+                $('#robotIndexForUser').val(robotIndex);
+                $('#addUserModal').modal('show');
+            });
+
+            // 提交添加用户表单
+            $('#submitAddUser').click(function() {
+                const formData = {
+                    robot_index: $('#robotIndexForUser').val(),
+                    phone: $('#addUserForm input[name="phone"]').val(),
+                    always_at: $('#addUserForm input[name="always_at"]').is(':checked')
+                };
+
+                $.ajax({
+                    url: '/add_user',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify(formData),
+                    success: function(response) {
+                        if (response.status === 'success') {
+                            showAlert(response.message);
+                            $('#addUserModal').modal('hide');
+                            // 重新加载页面以显示新用户
+                            location.reload();
+                        } else {
+                            showAlert(response.message, 'danger');
+                        }
+                    },
+                    error: function() {
+                        showAlert('添加失败，请检查网络连接', 'danger');
+                    }
+                });
+            });
+
+            // 添加关键词按钮点击事件
+            $('.add-keyword').click(function() {
+                const robotIndex = $(this).data('robot-index');
+                const phone = $(this).data('phone');
+                $('#robotIndexForKeyword').val(robotIndex);
+                $('#phoneForKeyword').val(phone);
+                $('#addKeywordModal').modal('show');
+            });
+
+            // 提交添加关键词表单
+            $('#submitAddKeyword').click(function() {
+                const formData = {
+                    robot_index: $('#robotIndexForKeyword').val(),
+                    phone: $('#phoneForKeyword').val(),
+                    keyword: $('#addKeywordForm input[name="keyword"]').val()
+                };
+
+                $.ajax({
+                    url: '/add_keyword',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify(formData),
+                    success: function(response) {
+                        if (response.status === 'success') {
+                            showAlert(response.message);
+                            $('#addKeywordModal').modal('hide');
+                            // 重新加载页面以显示新关键词
+                            location.reload();
+                        } else {
+                            showAlert(response.message, 'danger');
+                        }
+                    },
+                    error: function() {
+                        showAlert('添加失败，请检查网络连接', 'danger');
+                    }
+                });
+            });
+
+            // 保存机器人配置
+            $('.save-robot').click(function() {
+                const form = $(this).closest('form');
+                const index = form.data('index');
+                const formData = {
+                    robot_index: index,
+                    robot_data: {
+                        name: form.find('input[name="name"]').val(),
+                        token: form.find('input[name="token"]').val(),
+                        secret: form.find('input[name="secret"]').val(),
+                        enabled: form.find('input[name="enabled"]').is(':checked'),
+                        receive_all: form.find('input[name="receive_all"]').is(':checked')
+                    }
+                };
+
+                $.ajax({
+                    url: '/update_robot',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify(formData),
+                    success: function(response) {
+                        if (response.status === 'success') {
+                            showAlert(response.message);
+                        } else {
+                            showAlert(response.message, 'danger');
+                        }
+                    },
+                    error: function() {
+                        showAlert('保存失败，请检查网络连接', 'danger');
+                    }
+                });
+            });
+
+            // 删除用户按钮点击事件
+            $('.delete-user').click(function() {
+                if (confirm('确定要删除此用户吗？')) {
+                    const robotIndex = $(this).data('robot-index');
+                    const phone = $(this).data('phone');
+                    
+                    console.log(`尝试删除用户，robotIndex: ${robotIndex}, phone: ${phone}`);
+                    
+                    // 在调试模式下显示更多信息
+                    if ($('#debugBtn').hasClass('btn-warning')) {
+                        showAlert(`正在删除用户: ${phone}，机器人索引: ${robotIndex}`, 'info');
+                    }
+                    
+                    $.ajax({
+                        url: '/delete_user',
+                        type: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify({
+                            robot_index: robotIndex,
+                            phone: phone
+                        }),
+                        success: function(response) {
+                            console.log('删除用户响应:', response);
+                            if (response.status === 'success') {
+                                showAlert(response.message);
+                                // 延迟一秒后刷新页面，确保提示信息显示
+                                setTimeout(function() {
+                                    location.reload();
+                                }, 1000);
+                            } else {
+                                showAlert(response.message, 'danger');
+                                console.error('删除用户失败:', response.message);
+                            }
+                        },
+                        error: function(xhr, status, error) {
+                            console.error('删除用户错误:', error, xhr.responseText);
+                            showAlert('删除失败，请检查网络连接和控制台日志', 'danger');
+                        }
+                    });
+                }
+            });
+
+            // 切换"总是@"开关
+            $('.toggle-always-at').change(function() {
+                const robotIndex = $(this).data('robot-index');
+                const phone = $(this).data('phone');
+                const isChecked = $(this).is(':checked');
+                
+                console.log(`切换用户"总是@"状态，robotIndex: ${robotIndex}, phone: ${phone}, 状态: ${isChecked}`);
+                
+                $.ajax({
+                    url: '/update_user',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        robot_index: robotIndex,
+                        phone: phone,
+                        user_data: {
+                            always_at: isChecked
+                        }
+                    }),
+                    success: function(response) {
+                        console.log('更新用户响应:', response);
+                        if (response.status === 'success') {
+                            showAlert(`已${isChecked ? '开启' : '关闭'}总是@该用户`);
+                        } else {
+                            showAlert(response.message, 'danger');
+                            console.error('更新用户失败:', response.message);
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('更新用户错误:', error, xhr.responseText);
+                        showAlert('更新失败，请检查网络连接和控制台日志', 'danger');
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html> 
