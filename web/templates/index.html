@@ -110,9 +110,14 @@
                                                     <label class="form-check-label">接收所有消息</label>
                                                 </div>
                                             </div>
-                                            <button type="button" class="btn btn-primary save-robot">
-                                                <i class="bi bi-save"></i> 保存设置
-                                            </button>
+                                            <div class="d-flex gap-2">
+                                                <button type="button" class="btn btn-primary save-robot">
+                                                    <i class="bi bi-save"></i> 保存设置
+                                                </button>
+                                                <button type="button" class="btn btn-danger delete-robot" data-index="{{ loop.index0 }}">
+                                                    <i class="bi bi-trash"></i> 删除机器人
+                                                </button>
+                                            </div>
                                         </form>
 
                                         <hr>
@@ -517,6 +522,36 @@
                 }
             });
 
+            // 删除机器人按钮点击事件
+            $('.delete-robot').click(function() {
+                if (confirm('确定要删除此机器人吗？此操作无法撤销！')) {
+                    const index = $(this).data('index');
+                    
+                    $.ajax({
+                        url: '/delete_robot',
+                        type: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify({
+                            robot_index: index
+                        }),
+                        success: function(response) {
+                            if (response.status === 'success') {
+                                showAlert(response.message);
+                                // 延迟一秒后刷新页面，确保提示信息显示
+                                setTimeout(function() {
+                                    location.reload();
+                                }, 1000);
+                            } else {
+                                showAlert(response.message, 'danger');
+                            }
+                        },
+                        error: function() {
+                            showAlert('删除失败，请检查网络连接', 'danger');
+                        }
+                    });
+                }
+            });
+            
             // 切换"总是@"开关
             $('.toggle-always-at').change(function() {
                 const robotIndex = $(this).data('robot-index');

@@ -389,10 +389,20 @@ if FLASK_AVAILABLE:
             if robot_index < 0 or robot_index >= len(config["dingtalk"]["robots"]):
                 return jsonify({"status": "error", "message": "无效的机器人索引"})
             
-            config["dingtalk"]["robots"][robot_index]["name"] = request.json.get("name", "未命名机器人")
-            config["dingtalk"]["robots"][robot_index]["token"] = request.json.get("token", "")
-            config["dingtalk"]["robots"][robot_index]["secret"] = request.json.get("secret", "")
-            config["dingtalk"]["robots"][robot_index]["receive_all"] = request.json.get("receive_all", True)
+            # 正确处理前端发送的嵌套数据结构
+            robot_data = request.json.get("robot_data", {})
+            if robot_data:
+                config["dingtalk"]["robots"][robot_index]["name"] = robot_data.get("name", "未命名机器人")
+                config["dingtalk"]["robots"][robot_index]["token"] = robot_data.get("token", "")
+                config["dingtalk"]["robots"][robot_index]["secret"] = robot_data.get("secret", "")
+                config["dingtalk"]["robots"][robot_index]["receive_all"] = robot_data.get("receive_all", True)
+                config["dingtalk"]["robots"][robot_index]["enabled"] = robot_data.get("enabled", True)
+            else:
+                # 兼容不使用嵌套结构的请求
+                config["dingtalk"]["robots"][robot_index]["name"] = request.json.get("name", "未命名机器人")
+                config["dingtalk"]["robots"][robot_index]["token"] = request.json.get("token", "")
+                config["dingtalk"]["robots"][robot_index]["secret"] = request.json.get("secret", "")
+                config["dingtalk"]["robots"][robot_index]["receive_all"] = request.json.get("receive_all", True)
             
             result = save_config(config)
             if result is True:
