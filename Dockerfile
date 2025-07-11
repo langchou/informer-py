@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-RUN pip install --no-cache-dir Flask==2.0.1 Werkzeug==2.0.1
+RUN pip install --no-cache-dir Flask==2.0.1 Werkzeug==2.0.1 schedule>=1.2.2
 
 # 确保安装了 requests 库（用于 Turnstile 验证）
 RUN pip install --no-cache-dir requests

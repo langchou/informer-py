@@ -11,3 +11,4 @@ fake-useragent==2.1.0
 openai==1.72.0
 httpx[socks]==0.28.1
 Flask==2.0.1
+schedule>=1.2.2
