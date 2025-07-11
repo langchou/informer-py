@@ -25,6 +25,8 @@ class UserConfig:
     phone: str  # 用户手机号
     keywords: List[str]  # 用户关注的关键词
     always_at: bool = False  # 是否总是@该用户
+    expire_date: str = ""  # 用户有效期，格式为"YYYY-MM-DD"，空字符串表示永久有效
+    is_permanent: bool = False  # 是否永久有效，默认为True
 
 
 @dataclass
@@ -157,6 +159,8 @@ def load_config(config_path="data/config.yaml") -> Config:
                         # 获取关键词列表
                         keywords = user_data.get('keywords', [])
                         always_at = user_data.get('always_at', False)
+                        expire_date = user_data.get('expire_date', "")
+                        is_permanent = user_data.get('is_permanent', True)
                         
                         # 将关键词保存到旧格式字典中，用于旧代码的兼容
                         robot_keywords[phone] = keywords
@@ -164,7 +168,9 @@ def load_config(config_path="data/config.yaml") -> Config:
                         users.append(UserConfig(
                             phone=phone,
                             keywords=keywords,
-                            always_at=always_at
+                            always_at=always_at,
+                            expire_date=expire_date,
+                            is_permanent=is_permanent
                         ))
                         logger.debug(f"机器人 [{robot_name}] 配置用户: {phone}, always_at={always_at}, 关键词数量={len(keywords)}")
                 # 处理旧版配置格式

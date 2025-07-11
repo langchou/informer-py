@@ -8,6 +8,7 @@ import threading
 import urllib3
 import warnings
 import yaml
+import schedule
 from loguru import logger
 import sys
 from functools import wraps
@@ -41,13 +42,25 @@ if FLASK_AVAILABLE:
     from informer.logger import setup_logger
     from informer.database import Database
     from informer.notifier import MultiRobotNotifier, DingTalkNotifier
+    from informer.expiration_manager import ExpirationManager
     from informer.proxy_manager import ProxyManager
     from informer.monitor import ChiphellMonitor
+    from datetime import datetime
 
     app = Flask(__name__, 
                 template_folder=os.path.join(os.path.dirname(os.path.dirname(__file__)), 'web', 'templates'),
                 static_folder=os.path.join(os.path.dirname(os.path.dirname(__file__)), 'web', 'static'))
     app.secret_key = os.urandom(24)
+    
+    # 添加自定义模板过滤器
+    @app.template_filter('strptime')
+    def _jinja2_filter_strptime(date_string, format_string):
+        """将日期字符串转换为日期对象"""
+        try:
+            return datetime.strptime(date_string, format_string)
+        except:
+            # 如果转换失败，返回当前时间
+            return datetime.now()
 
 def load_web_config():
     """加载配置文件 (为Web界面提供)"""
@@ -78,7 +91,9 @@ def save_config(config):
                             users.append(UserConfig(
                                 phone=str(phone),
                                 keywords=user_data.get("keywords", []),
-                                always_at=user_data.get("always_at", False)
+                                always_at=user_data.get("always_at", False),
+                                expire_date=user_data.get("expire_date", ""),
+                                is_permanent=user_data.get("is_permanent", True)
                             ))
                     
                     robot_objects.append(DingTalkRobot(
@@ -245,11 +260,13 @@ if FLASK_AVAILABLE:
     @app.route('/')
     @login_required
     def index():
+        from datetime import datetime
+        
         config = load_web_config()
         if "error" in config:
             flash(f"加载配置失败: {config['error']}", "danger")
             config = {}
-        return render_template('index.html', config=config)
+        return render_template('index.html', config=config, now=datetime.now())
 
     @app.route('/add_robot', methods=['POST'])
     @login_required
@@ -302,7 +319,9 @@ if FLASK_AVAILABLE:
             
             robot["users"][phone] = {
                 "always_at": always_at,
-                "keywords": []
+                "keywords": [],
+                "expire_date": request.json.get("expire_date", ""),
+                "is_permanent": request.json.get("is_permanent", True)
             }
             
             result = save_config(config)
@@ -502,6 +521,35 @@ if FLASK_AVAILABLE:
                 return jsonify({"status": "error", "message": f"切换失败: {result}"})
         except Exception as e:
             return jsonify({"status": "error", "message": f"切换失败: {str(e)}"})
+            
+    @app.route('/update_user_expiration', methods=['POST'])
+    @login_required
+    def update_user_expiration():
+        try:
+            robot_index = int(request.json.get("robot_index"))
+            phone = str(request.json.get("phone"))
+            expire_date = request.json.get("expire_date", "")
+            is_permanent = bool(request.json.get("is_permanent", True))
+            config = load_web_config()
+
+            if robot_index < 0 or robot_index >= len(config["dingtalk"]["robots"]):
+                return jsonify({"status": "error", "message": "无效的机器人索引"})
+            
+            user_data = config["dingtalk"]["robots"][robot_index]["users"].get(phone)
+            if not user_data:
+                return jsonify({"status": "error", "message": "用户不存在"})
+
+            # 更新有效期信息
+            user_data["expire_date"] = expire_date
+            user_data["is_permanent"] = is_permanent
+            
+            result = save_config(config)
+            if result is True:
+                return jsonify({"status": "success", "message": "有效期更新成功"})
+            else:
+                return jsonify({"status": "error", "message": f"更新失败: {result}"})
+        except Exception as e:
+            return jsonify({"status": "error", "message": f"更新失败: {str(e)}"})
 
 def run_web_app():
     """运行Web配置界面"""
@@ -519,6 +567,26 @@ def run_web_app():
         app.run(host=host, port=port, debug=debug)
     else:
         pass
+
+def check_expiring_users():
+    """定时检查并通知即将过期的用户"""
+    try:
+        global notifier_instance
+        
+        if not notifier_instance:
+            logger.warning("无法执行过期检查：通知器实例不可用")
+            return
+            
+        logger.info("开始执行用户过期检查...")
+        
+        # 导入过期管理器
+        from informer.expiration_manager import ExpirationManager
+        expiration_manager = ExpirationManager(notifier_instance)
+        expiration_manager.check_and_notify_expiring_users()
+        
+        logger.info("用户过期检查完成")
+    except Exception as e:
+        logger.error(f"执行过期检查时出错：{e}")
 
 def main():
     """主函数"""
@@ -540,14 +608,41 @@ def main():
         config.log_config.compress,
         config.log_config.level
     )
+    
+    # 设置每天上午12点检查用户过期情况（改为12点）
+    schedule.every().day.at("12:00").do(check_expiring_users)
+    
+    # 启动定时任务线程
+    def run_schedule():
+        while True:
+            schedule.run_pending()
+            time.sleep(60)  # 每分钟检查一次
+            
+    schedule_thread = threading.Thread(target=run_schedule, daemon=True)
+    schedule_thread.start()
+    logger.info("已启动用户过期检查定时任务")
 
     if len(sys.argv) > 1 and sys.argv[1] == '--web':
         logger.info("以--web模式启动，只运行Web配置界面。")
         run_web_app()
         return
 
+    # 先启动监控线程，初始化notifier_instance
     monitor_thread = threading.Thread(target=start_monitor, args=(config,), daemon=True)
     monitor_thread.start()
+    
+    # 等待notifier_instance初始化完成
+    wait_count = 0
+    while notifier_instance is None and wait_count < 10:
+        time.sleep(0.5)
+        wait_count += 1
+    
+    # 在notifier_instance初始化完成后，执行一次用户过期检查
+    if notifier_instance:
+        threading.Thread(target=check_expiring_users, daemon=True).start()
+        logger.info("已触发首次用户过期检查")
+    else:
+        logger.warning("等待通知器初始化超时，首次过期检查将在下次定时任务触发时执行")
     
     run_web_app()
 

@@ -24,6 +24,8 @@ dingtalk:
             - "RTX 4090"
             - "3090"
             - "显卡"
+          expire_date: "2025-12-31"  # 用户有效期，格式为YYYY-MM-DD
+          is_permanent: false  # 是否永久有效，默认为false
         "13800001111":  # 另一个用户
           always_at: true  # 每条消息都@此用户
           keywords:  # 该用户关键词列表

@@ -33,6 +33,12 @@
             padding: 15px;
             margin-bottom: 15px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+        }
+        .user-card-expired {
+            opacity: 0.7;
+            background-color: #f8f9fa;
+            border-color: #dee2e6;
         }
         .keyword-badge {
             margin-right: 5px;
@@ -134,17 +140,35 @@
                                                 {% set robot_index = loop.index0 %}
                                                 {% for phone, user_info in robot.users.items() %}
                                                     <div class="user-card">
-                                                        <div class="d-flex justify-content-between align-items-center mb-3">
-                                                            <h6 class="mb-0">
-                                                                <i class="bi bi-person"></i> {{ phone }}
-                                                                <span class="badge bg-secondary d-none debug-info">机器人索引: {{ robot_index }}</span>
-                                                            </h6>
+                                                                                                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                                        <h6 class="mb-0">
+                                                            <i class="bi bi-person"></i> {{ phone }}
+                                                            <span class="badge bg-secondary d-none debug-info">机器人索引: {{ robot_index }}</span>
+                                                            {% if user_info.is_permanent != true and user_info.expire_date %}
+                                                                {% if now.strftime('%Y-%m-%d') > user_info.expire_date %}
+                                                                    <span class="badge bg-danger">已过期</span>
+                                                                {% else %}
+                                                                    <span class="badge bg-info">有效期至: {{ user_info.expire_date }}</span>
+                                                                {% endif %}
+                                                            {% else %}
+                                                                <span class="badge bg-success">永久有效</span>
+                                                            {% endif %}
+                                                        </h6>
+                                                        <div>
+                                                            <button type="button" class="btn btn-primary btn-sm edit-expiration" 
+                                                                    data-robot-index="{{ robot_index }}" 
+                                                                    data-phone="{{ phone }}"
+                                                                    data-is-permanent="{{ user_info.is_permanent|default(true) }}"
+                                                                    data-expire-date="{{ user_info.expire_date|default('') }}">
+                                                                <i class="bi bi-calendar"></i>
+                                                            </button>
                                                             <button type="button" class="btn btn-danger btn-sm delete-user" 
                                                                     data-robot-index="{{ robot_index }}" 
                                                                     data-phone="{{ phone }}">
                                                                 <i class="bi bi-trash"></i>
                                                             </button>
                                                         </div>
+                                                    </div>
                                                         <div class="mb-3">
                                                             <div class="form-check form-switch mb-2">
                                                                 <input class="form-check-input toggle-always-at" type="checkbox" 
@@ -180,6 +204,19 @@
                                                             </button>
                                                         </div>
                                                     </div>
+                                                    {% if user_info.is_permanent != true and user_info.expire_date and now.strftime('%Y-%m-%d') > user_info.expire_date %}
+                                                    <style>
+                                                        .user-card-expired {
+                                                            opacity: 0.7;
+                                                            background-color: #f8f9fa;
+                                                        }
+                                                    </style>
+                                                    <script>
+                                                        $(function(){
+                                                            $(".user-card:has(.badge.bg-danger:contains('已过期'))").addClass("user-card-expired");
+                                                        });
+                                                    </script>
+                                                    {% endif %}
                                                 {% endfor %}
                                             {% else %}
                                                 <div class="text-center text-muted py-4">
@@ -247,19 +284,27 @@
                     <h5 class="modal-title">添加用户</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body">
-                    <form id="addUserForm">
-                        <input type="hidden" name="robot_index" id="robotIndexForUser">
-                        <div class="mb-3">
-                            <label class="form-label">手机号</label>
-                            <input type="text" class="form-control" name="phone" required>
-                        </div>
-                        <div class="mb-3 form-check">
-                            <input type="checkbox" class="form-check-input" name="always_at" id="alwaysAt">
-                            <label class="form-check-label" for="alwaysAt">总是@该用户</label>
-                        </div>
-                    </form>
-                </div>
+                                                                <div class="modal-body">
+                                                    <form id="addUserForm">
+                                                        <input type="hidden" name="robot_index" id="robotIndexForUser">
+                                                        <div class="mb-3">
+                                                            <label class="form-label">手机号</label>
+                                                            <input type="text" class="form-control" name="phone" required>
+                                                        </div>
+                                                        <div class="mb-3 form-check">
+                                                            <input type="checkbox" class="form-check-input" name="always_at" id="alwaysAt">
+                                                            <label class="form-check-label" for="alwaysAt">总是@该用户</label>
+                                                        </div>
+                                                        <div class="mb-3 form-check">
+                                                            <input type="checkbox" class="form-check-input" name="is_permanent" id="isPermanent" checked>
+                                                            <label class="form-check-label" for="isPermanent">永久有效</label>
+                                                        </div>
+                                                        <div class="mb-3 expiration-date-group">
+                                                            <label class="form-label">有效期至</label>
+                                                            <input type="date" class="form-control" name="expire_date">
+                                                        </div>
+                                                    </form>
+                                                </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
                     <button type="button" class="btn btn-primary" id="submitAddUser">添加</button>
@@ -294,10 +339,44 @@
         </div>
     </div>
 
+    <!-- 模态框：编辑用户有效期 -->
+    <div class="modal fade" id="editExpirationModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">设置用户有效期</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editExpirationForm">
+                        <input type="hidden" name="robot_index" id="robotIndexForExpiration">
+                        <input type="hidden" name="phone" id="phoneForExpiration">
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" class="form-check-input" name="is_permanent" id="isExpPermanent">
+                            <label class="form-check-label" for="isExpPermanent">永久有效</label>
+                        </div>
+                        <div class="mb-3" id="expDateGroup">
+                            <label class="form-label">有效期至</label>
+                            <input type="date" class="form-control" name="expire_date" id="expireDate">
+                            <small class="form-text text-muted">留空表示永久有效</small>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" id="submitEditExpiration">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
     <script>
         $(document).ready(function() {
+            // 为过期用户卡片添加样式
+            $(".user-card:has(.badge.bg-danger:contains('已过期'))").addClass("user-card-expired");
+            
             // 显示提示信息
             function showAlert(message, type = 'success') {
                 $('#alertMessage').text(message);
@@ -380,12 +459,26 @@
                 $('#addUserModal').modal('show');
             });
 
+            // 有效期控制
+            $('#isPermanent').change(function() {
+                if ($(this).is(':checked')) {
+                    $('.expiration-date-group').hide();
+                } else {
+                    $('.expiration-date-group').show();
+                }
+            });
+            
+            // 初始化有效期控制
+            $('#isPermanent').trigger('change');
+            
             // 提交添加用户表单
             $('#submitAddUser').click(function() {
                 const formData = {
                     robot_index: $('#robotIndexForUser').val(),
                     phone: $('#addUserForm input[name="phone"]').val(),
-                    always_at: $('#addUserForm input[name="always_at"]').is(':checked')
+                    always_at: $('#addUserForm input[name="always_at"]').is(':checked'),
+                    is_permanent: $('#addUserForm input[name="is_permanent"]').is(':checked'),
+                    expire_date: $('#addUserForm input[name="expire_date"]').val()
                 };
 
                 $.ajax({
@@ -583,6 +676,69 @@
                     error: function(xhr, status, error) {
                         console.error('更新用户错误:', error, xhr.responseText);
                         showAlert('更新失败，请检查网络连接和控制台日志', 'danger');
+                    }
+                });
+            });
+            
+            // 编辑有效期按钮点击事件
+            $('.edit-expiration').click(function() {
+                const robotIndex = $(this).data('robot-index');
+                const phone = $(this).data('phone');
+                const isPermanent = $(this).data('is-permanent') === true || $(this).data('is-permanent') === 'true';
+                const expireDate = $(this).data('expire-date') || '';
+                
+                $('#robotIndexForExpiration').val(robotIndex);
+                $('#phoneForExpiration').val(phone);
+                $('#isExpPermanent').prop('checked', isPermanent);
+                $('#expireDate').val(expireDate);
+                
+                // 显示/隐藏日期选择器
+                if (isPermanent) {
+                    $('#expDateGroup').hide();
+                } else {
+                    $('#expDateGroup').show();
+                }
+                
+                $('#editExpirationModal').modal('show');
+            });
+            
+            // 永久有效复选框变更事件
+            $('#isExpPermanent').change(function() {
+                if ($(this).is(':checked')) {
+                    $('#expDateGroup').hide();
+                } else {
+                    $('#expDateGroup').show();
+                }
+            });
+            
+            // 提交编辑有效期表单
+            $('#submitEditExpiration').click(function() {
+                const formData = {
+                    robot_index: $('#robotIndexForExpiration').val(),
+                    phone: $('#phoneForExpiration').val(),
+                    is_permanent: $('#isExpPermanent').is(':checked'),
+                    expire_date: $('#expireDate').val()
+                };
+                
+                $.ajax({
+                    url: '/update_user_expiration',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify(formData),
+                    success: function(response) {
+                        if (response.status === 'success') {
+                            showAlert(response.message);
+                            $('#editExpirationModal').modal('hide');
+                            // 延迟一秒后刷新页面
+                            setTimeout(function() {
+                                location.reload();
+                            }, 1000);
+                        } else {
+                            showAlert(response.message, 'danger');
+                        }
+                    },
+                    error: function() {
+                        showAlert('更新失败，请检查网络连接', 'danger');
                     }
                 });
             });

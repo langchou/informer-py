@@ -9,6 +9,7 @@ import base64
 import urllib.parse
 import requests
 import json
+from datetime import datetime, timedelta
 from loguru import logger
 
 
@@ -167,13 +168,27 @@ class DingTalkNotifier:
             bool: 是否发送成功
         """
         message = f"❌ 错误报告\n\n**错误类型**: {title}\n\n**错误信息**: {error_message}\n\n**发生时间**: {time.strftime('%Y-%m-%d %H:%M:%S')}"
-        return self.send_markdown_notification(f"{title}", message) 
+        return self.send_markdown_notification(f"{title}", message)
+    
+    def send_text(self, message, at_mobiles=None):
+        """
+        发送纯文本消息
+        
+        Args:
+            message: 消息内容
+            at_mobiles: 要@的手机号列表
+            
+        Returns:
+            bool: 是否发送成功
+        """
+        return self.send_text_notification("", message, at_mobiles) 
 
 
 class MultiRobotNotifier:
     """多机器人通知管理器"""
     
     def __init__(self, robots_config):
+        
         """初始化多机器人通知管理器
         
         Args:
